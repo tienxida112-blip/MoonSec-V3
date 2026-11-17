@@ -1,8 +1,8 @@
 # MoonsSec V3 - Lua Obfuscator
 
-A saddest end of an best Lua obfuscator in history.
+A saddest end of one of best Lua obfuscator in history.
 
-Released in **July 2, 2021** and working til **December 15, 2024**, fully gone in **December 25, 2025**, MoonSec was a best lua obfuscator before, **federal#9999 - Moonsec Owner**, he did so good, control flow flattening, virtual machine insane, and custom bytecode, etc he did all thing a obfuscator need.
+Released on **July 2, 2021** and working til **December 15, 2024**, fully gone on **December 25, 2025**, MoonSec was a best lua obfuscator before, **federal#9999 - Moonsec Owner**, he did so well, control flow flattening, virtual machine, and custom bytecode, etc he did everything an obfuscator need.
 
 But sadly, he left quietly with the obfuscator, leaving only the message "I quit" on his GitHub.
 
