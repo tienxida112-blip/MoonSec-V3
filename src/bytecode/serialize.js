@@ -65,7 +65,7 @@ function writeConstants(w, proto, ctx) {
       w.f64(c);
     } else if (typeof c === 'string') {
       w.u8(ctx.constTypes.string);
-      const enc = encodeConstant(c, ctx.constantKey);
+      const enc = encodeConstant(c, ctx.constantKey, ctx.rng ? ctx.rng.range(1, 127) : undefined);
       w.i32(enc.length);
       w.bytes(enc);
     } else {
@@ -133,11 +133,12 @@ function writeInstructions(w, proto, ctx) {
     }
 
     const desc = (type << 1) | (mask << 3);
-    w.u8(desc);
+    const shift = ctx.instructionKey ? ctx.instructionKey + (i + 1) * 17 : 0;
+    w.u8((desc + shift) % 256);
     const opnum = (ctx.varMap && ins.variant && ctx.varMap[ins.variant] !== undefined)
       ? ctx.varMap[ins.variant]
       : map[ins.op];
-    w.i16(opnum);
+    w.i16((opnum + shift) % 32768);
     w.i16(A);
 
     if (type === 0) {
@@ -251,12 +252,13 @@ function readInstructions(r, fn, ctx) {
   const rev = ctx.opRev;
   let pc = 0;
   for (let i = 0; i < n; i++) {
-    const desc = r.u8();
+    const shift = ctx.instructionKey ? ctx.instructionKey + (i + 1) * 17 : 0;
+    const desc = (r.u8() - shift % 256 + 256) % 256;
     if (getBits(desc, 1, 1) !== 0) continue;
     const type = getBits(desc, 2, 3);
     const mask = getBits(desc, 4, 6);
     const inst = {
-      opnum: r.i16(),
+      opnum: (r.i16() - shift % 32768 + 32768) % 32768,
       a: r.i16(),
       b: 0,
       c: 0,

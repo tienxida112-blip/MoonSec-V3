@@ -196,6 +196,21 @@ function handlers(n) {
     H[op + 'NKR'] = cmp(op, IA, sC, true);
     H[op + 'NKK'] = cmp(op, IA, IC, true);
   }
+  // Equivalent handler bodies chosen per build diversify the VM itself, not
+  // just opcode numbers. Restrict these alternatives to simple operations so
+  // Lua's evaluation order, metamethods and multiple returns are preserved.
+  if (n.rng) {
+    const alternatives = {
+      MOVE: `local _v4move=${sB};${sA}=_v4move`,
+      LOADBOOL: `local _v4bool=${IB}~=0;${sA}=_v4bool`,
+      GETGLOBAL: `local _v4key=${IB};${sA}=${E}[_v4key]`,
+      NOT: `local _v4value=${sB};${sA}=not _v4value`,
+      NEWTABLE: `local _v4table={};${sA}=_v4table`,
+    };
+    for (const [name, code] of Object.entries(alternatives)) {
+      if (n.rng.bool()) H[name] = code;
+    }
+  }
   return H;
 }
 

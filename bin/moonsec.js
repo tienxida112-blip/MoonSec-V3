@@ -5,7 +5,7 @@ const fs = require('fs');
 const { obfuscate } = require('../src/obfuscate');
 
 function usage() {
-  console.log(`MoonSec V3  —  Lua/Roblox VM obfuscator
+  console.log(`MoonSec V4  —  Lua/Roblox VM obfuscator
 
 Usage:
   node bin/moonsec.js <input.lua> [-o output.lua] [--seed N] [--no-watermark]

@@ -1,7 +1,7 @@
 {
-  "name": "moonsec-v3",
-  "version": "3.0.0",
-  "description": "MoonSec V3 reconstruction — Node.js Lua/Roblox VM obfuscator",
+  "name": "moonsec-v4",
+  "version": "4.0.0",
+  "description": "MoonSec V4 reconstruction — Node.js Lua/Roblox VM obfuscator",
   "main": "src/obfuscate.js",
   "bin": {
     "moonsec": "bin/moonsec.js"

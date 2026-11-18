@@ -76,7 +76,7 @@ function main() {
   const index = [];
   for (let i = 0; i < list.length; i++) {
     const n = pad(i + 1);
-    const src = '-- MoonSec V3 sample ' + n + '\n' + list[i] + '\n';
+    const src = '-- MoonSec V4 sample ' + n + '\n' + list[i] + '\n';
     let res;
     try {
       res = obfuscate(src, { seed: 1000 + i * 97 });

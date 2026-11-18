@@ -10,7 +10,7 @@ const { RNG, randomIdent } = require('./util');
 const { makeAlphabet } = require('./encode');
 
 function injectWatermark(proto) {
-  const mark = 'This file was protected with MoonSec V3';
+  const mark = 'This file was protected with MoonSec V4';
   const k = proto.constants.length;
   proto.constants.push(mark);
   const extra = [
@@ -96,6 +96,7 @@ function obfuscate(source, options = {}) {
     nil: typeBytes[3],
   };
 
+  const slots = rng.shuffle([1, 2, 3, 4]);
   const ctx = {
     rng,
     seed: seed >>> 0,
@@ -103,10 +104,13 @@ function obfuscate(source, options = {}) {
     usedVariants: used,
     protoFormat,
     constTypes,
-    bytecodeKey: rng.range(1, 250),
-    constantKey: 0,
+    // V4: both keys live in a wide space and are actually used. V3 left
+    // constantKey at 0, which silently disabled string-constant encryption.
+    bytecodeKey: rng.range(1, 100000),
+    constantKey: rng.range(1, 100000),
     alphabet: makeAlphabet(rng),
-    opSlots: { enum: 1, A: 2, B: 3, C: 4 },
+    opSlots: Object.fromEntries(['enum', 'A', 'B', 'C'].map((name, i) => [name, slots[i]])),
+    instructionKey: rng.range(1, 255),
     opMap: varMap,
     junk: false,
   };
@@ -125,6 +129,7 @@ function obfuscate(source, options = {}) {
       constTypes: ctx.constTypes,
       varMap: ctx.varMap,
       opSlots: ctx.opSlots,
+      instructionKey: ctx.instructionKey,
       alphabet: ctx.alphabet,
     },
   };
