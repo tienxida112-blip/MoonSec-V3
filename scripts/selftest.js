@@ -6,10 +6,11 @@ const { parse } = require('../src/lua/parser');
 const { compile } = require('../src/lua/compiler');
 const { interpret } = require('../src/interpret');
 const { obfuscate } = require('../src/obfuscate');
-const { encodeBytes, decodeBytes, makeAlphabet } = require('../src/encode');
+const { encodeBytes, decodeBytes, makeAlphabet, encodeConstant, decodeConstant } = require('../src/encode');
 const { RNG } = require('../src/util');
 const { optimizeProto } = require('../src/lua/optimizer');
 const { OpCode } = require('../src/bytecode/opcodes');
+const { serializeProto, deserializeProto } = require('../src/bytecode/serialize');
 const { handlers } = require('../src/vm/handlers');
 
 function run(src) {
@@ -105,13 +106,53 @@ function main() {
   {
     const rng = new RNG(1);
     const alph = makeAlphabet(rng);
-    const buf = Buffer.from('hello moonsec v3', 'utf8');
+    const buf = Buffer.from('hello moonsec v4', 'utf8');
     const enc = encodeBytes(buf, 42, alph);
     const dec = decodeBytes(enc, 42);
     if (Buffer.compare(buf, dec) !== 0) {
       console.error('FAIL codec');
       process.exitCode = 1;
     } else console.log('  ok codec');
+  }
+
+  {
+    for (const key of [1, 27, 100000]) {
+      for (const value of ['', 'hello', 'héllo 世界', '\0binary\0']) {
+        const a = encodeConstant(value, key, 1);
+        const b = encodeConstant(value, key, 127);
+        if (decodeConstant(key, a) !== value || decodeConstant(key, b) !== value ||
+            (value && a.equals(b))) throw new Error('constant codec/salt regression');
+      }
+    }
+    const raw = Buffer.from('éé', 'utf8');
+    if (decodeConstant(0, raw) !== 'éé') throw new Error('unencoded unicode constant regression');
+    console.log('  ok constant codec and salts');
+  }
+
+  {
+    const src = 'print("secret")';
+    const a = obfuscate(src, { seed: 123 });
+    const b = obfuscate(src, { seed: 123 });
+    const c = obfuscate(src, { seed: 124 });
+    if (a.output !== b.output || a.output === c.output || a.output.includes('secret') ||
+        a.ctx.constantKey === 0 || !a.ctx.instructionKey ||
+        new Set(Object.values(a.ctx.opSlots)).size !== 4) {
+      throw new Error('v4 reproducibility or diversification regression');
+    }
+    console.log('  ok v4 reproducibility and diversification');
+  }
+
+  {
+    const ob = obfuscate('local x="héllo"; print(x, 42)', { seed: 321 });
+    const ctx = { ...ob.ctx, opMap: ob.ctx.varMap, rng: new RNG(999),
+      opRev: Object.fromEntries(Object.entries(ob.ctx.varMap).map(([name, code]) => [code, name])) };
+    const restored = deserializeProto(serializeProto(ob.proto, ctx), ctx);
+    if (JSON.stringify(restored.constants) !== JSON.stringify(ob.proto.constants) ||
+        restored.instructions.length !== ob.proto.instructions.length ||
+        restored.instructions.some((inst, i) => inst.opnum !== ctx.varMap[ob.proto.instructions[i].variant])) {
+      throw new Error('v4 serialized proto round-trip regression');
+    }
+    console.log('  ok v4 serialized proto round-trip');
   }
 
   console.log('obfuscate output checks');
@@ -125,7 +166,7 @@ function main() {
   for (const src of obfuscateSamples) {
     try {
       const ob = obfuscate(src, { seed: 12345 });
-      if (!ob.output.startsWith('([[This file was protected with MoonSec V3]]):gsub') || ob.output.includes('Federal')) {
+      if (!ob.output.startsWith('("\\84\\104\\105\\115') || ob.output.includes('Federal')) {
         throw new Error('unexpected header or watermark');
       }
       console.log('  ok obfuscate', ob.output.length + ' bytes');
@@ -195,7 +236,7 @@ function main() {
         p.functions.forEach(walk);
       })(ob.proto);
       const got = run(src).output.join('\n');
-      if (got !== expected.join('\n') || !ob.output.includes('([[This file was protected with MoonSec V3]]):gsub')) {
+      if (got !== expected.join('\n') || !ob.output.startsWith('("\\84\\104\\105\\115')) {
         console.error('FAIL value-compare variant split');
         process.exitCode = 1;
       } else if (sawFusedInValue) {
@@ -235,11 +276,17 @@ function main() {
   // the real VM rather than the JavaScript reference interpreter, so it is the
   // one that catches dispatcher/offset/mutation bugs like the two above.
   {
-    const luaBin = path.join(__dirname, '..', 'tools', 'bin', 'lua');
     const { spawnSync } = require('child_process');
+    const candidates = process.env.LUA_BIN ? [process.env.LUA_BIN] :
+      ['lua5.1', 'lua', path.join(__dirname, '..', 'tools', 'bin', 'lua')];
+    const luaBin = candidates.find(bin => {
+      const res = spawnSync(bin, ['-v'], { encoding: 'utf8', timeout: 5000 });
+      return res.status === 0;
+    });
     const tmp = require('os').tmpdir();
-    if (!fs.existsSync(luaBin)) {
-      console.log('  skip end-to-end (no tools/bin/lua)');
+    if (!luaBin) {
+      if (process.env.LUA_BIN) throw new Error('LUA_BIN is not an executable Lua interpreter');
+      console.log('  skip end-to-end (set LUA_BIN to a working Lua 5.1 interpreter)');
     } else {
       const execCases = [
         ['local s=0 for k,v in pairs({a=1,b=2,c=3}) do s=s+v end print(s)', '6'],
@@ -257,16 +304,42 @@ function main() {
         ['local x=10 local function mk() local y=1 return function(d) x=x+d y=y+1 return x+y end end ' +
          'local g=mk() print(g(2)) print(g(3))', '14\n18'],
       ];
-      for (const [src, expected] of execCases) {
-        const out = obfuscate(src, { seed: 1 }).output;
-        const file = path.join(tmp, 'msv3-selftest.lua');
+      execCases.push(
+        ['print("héllo 世界", "", "héllo 世界")', 'héllo 世界\t\théllo 世界'],
+        ['local function f(x) if x then return "yes" else return "no" end end print(f(true),f(false))', 'yes\tno'],
+        ['local t={} for i=1,20 do t[i]=i*i end print(t[1],t[20])', '1\t400'],
+        ['local x=0\n' + 'x=x+1\n'.repeat(2500) + 'print(x)', '2500']
+      );
+      {
+        const ob = obfuscate('print("integrity")', { seed: 14 });
+        // The longest encoded literal is the payload; its first 16 bytes are its alphabet.
+        const prefix = '"' + ob.ctx.alphabet;
+        const start = ob.output.lastIndexOf(prefix);
+        if (start < 0) throw new Error('encoded payload not found');
+        const at = start + 1 + 16;
+        const replacement = ob.ctx.alphabet[(ob.ctx.alphabet.indexOf(ob.output[at]) + 1) % 16];
+        const broken = ob.output.slice(0, at) + replacement + ob.output.slice(at + 1);
+        const file = path.join(tmp, 'msv4-integrity-' + process.pid + '.lua');
+        try {
+          fs.writeFileSync(file, broken);
+          const res = spawnSync(luaBin, [file], { encoding: 'utf8', timeout: 20000 });
+          if (res.status === 0 || !(res.stderr || '').includes('invalid bytecode')) {
+            throw new Error('tampered payload was not rejected');
+          }
+        } finally { fs.unlinkSync(file); }
+        console.log('  ok tampered bytecode rejected');
+      }
+      for (const [src, expected] of execCases) for (const seed of [1, 77, 12345]) {
+        const out = obfuscate(src, { seed, watermark: seed !== 77 }).output;
+        const file = path.join(tmp, 'msv4-selftest-' + process.pid + '.lua');
         fs.writeFileSync(file, out);
         const res = spawnSync(luaBin, [file], { encoding: 'utf8', timeout: 20000 });
+        fs.unlinkSync(file);
         const got = (res.stdout || '').trim();
         if (res.status !== 0 || got !== expected) {
           console.error('FAIL end-to-end', JSON.stringify(src.slice(0, 48)));
           console.error(' expected:', JSON.stringify(expected), 'got:', JSON.stringify(got),
-            'status:', res.status, 'err:', (res.stderr || '').split('\n')[0]);
+            'seed:', seed, 'status:', res.status, 'err:', (res.stderr || '').split('\n')[0]);
           process.exitCode = 1;
         } else {
           console.log('  ok end-to-end', JSON.stringify(src.slice(0, 40)));

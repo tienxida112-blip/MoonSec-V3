@@ -1,26 +1,59 @@
 'use strict';
 
+// V4 PRNG: xoshiro256** seeded via splitmix64. Replaces the V3 xorshift32,
+// whose low bits were weak and whose 32-bit state made per-build streams
+// easier to predict. The public API (next/int/range/pick/shuffle/bool) is
+// unchanged so the rest of the pipeline keeps working.
+const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+
+function rotl64(x, k) {
+  x &= MASK64;
+  return ((x << BigInt(k)) | (x >> BigInt(64 - k))) & MASK64;
+}
+
 class RNG {
   constructor(seed) {
-    this.s = (seed >>> 0) || 0x9E3779B9;
+    let s = BigInt((seed >>> 0) || 0x9E3779B9);
+    const splitmix = () => {
+      s = (s + 0x9E3779B97F4A7C15n) & MASK64;
+      let z = s;
+      z = ((z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n) & MASK64;
+      z = ((z ^ (z >> 27n)) * 0x94D049BB133111EBn) & MASK64;
+      return z ^ (z >> 31n);
+    };
+    this._s = [splitmix(), splitmix(), splitmix(), splitmix()];
   }
+
+  // Unsigned 32-bit integer (high half of the 64-bit xoshiro256** output).
   next() {
-    let x = this.s >>> 0;
-    x ^= x << 13;
-    x ^= x >>> 17;
-    x ^= x << 5;
-    this.s = x >>> 0;
-    return this.s;
+    const s = this._s;
+    const result = (rotl64(s[1] * 5n, 7) * 9n) & MASK64;
+    const t = (s[1] << 17n) & MASK64;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = rotl64(s[3], 45);
+    return Number(result >> 32n);
   }
+
+  nextFloat() {
+    return this.next() / 4294967296;
+  }
+
   int(max) {
     return this.next() % max;
   }
+
   range(min, max) {
     return min + this.int(max - min + 1);
   }
+
   pick(arr) {
     return arr[this.int(arr.length)];
   }
+
   shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -29,8 +62,20 @@ class RNG {
     }
     return a;
   }
+
   bool() {
     return (this.next() & 1) === 1;
+  }
+
+  bytes(n) {
+    const out = Buffer.alloc(n);
+    for (let i = 0; i < n; i++) out[i] = this.next() & 0xff;
+    return out;
+  }
+
+  // Derive an independent stream for a subsystem (chunk keys, decoys, ...).
+  fork(tag) {
+    return new RNG((this.next() ^ (tag >>> 0)) >>> 0);
   }
 }
 
@@ -54,7 +99,11 @@ function uniqueNames(rng, count, reserved = new Set()) {
   const out = [];
   const used = new Set(reserved);
   while (out.length < count) {
-    const n = randomIdent(rng, { min: 3, max: 5 });
+    // V4: longer identifiers (5-10 chars) for more entropy per build.
+    const n = randomIdent(rng, { min: 5, max: 10 });
+    // Never emit names that look like VM temporaries (_<digits>); the
+    // handler temp-renamer relies on that shape being unambiguous.
+    if (/^_\d+$/.test(n)) continue;
     if (!used.has(n)) {
       used.add(n);
       out.push(n);

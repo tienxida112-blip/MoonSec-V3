@@ -1,7 +1,7 @@
 'use strict';
 
 const { handlers } = require('./handlers');
-const { encodeBytes } = require('../encode');
+const { encodeBytes, checksumBytes } = require('../encode');
 const { uniqueNames } = require('../util');
 const { parse } = require('../lua/parser');
 const { evalLua } = require('../lua/eval');
@@ -26,16 +26,13 @@ function minify(src) {
 function ifTree(list, enumName) {
   const items = list.filter(x => x.num !== undefined).sort((a, b) => a.num - b.num);
   if (!items.length) return 'do end';
-  function rec(i) {
-    const it = items[i];
-    const body = it.code || 'do end';
-    const c = it.num + 1;
-    if (i === items.length - 1) {
-      return `if ${enumName}<${c} then ${body} else do end end`;
-    }
-    return `if ${enumName}<${c} then ${body} else ${rec(i + 1)} end`;
+  function rec(lo, hi) {
+    if (lo >= hi) return 'do end';
+    const mid = (lo + hi) >>> 1;
+    const it = items[mid];
+    return `if ${enumName}<${it.num} then ${rec(lo, mid)} elseif ${enumName}==${it.num} then ${it.code || 'do end'} else ${rec(mid + 1, hi)} end`;
   }
-  return rec(0);
+  return rec(0, items.length);
 }
 
 function luaBin(str) {
@@ -181,6 +178,7 @@ function generateVM(bytecode, ctx) {
     'rawget', 'rawset', 'pcall', 'xpcall', 'tostring', 'tonumber', '_G', '_ENV',
     'game', 'workspace', 'script', 'wait', 'spawn', 'tick', 'time', 'print',
     'e', 'n', 'l', 'd', 't', 'o', 'f', 'a', 'r', 'k', 'i', 'j', 'x', 'y',
+    '_hash', '_shift', '_v4move', '_v4bool', '_v4key', '_v4value', '_v4table',
   ]);
   const names = uniqueNames(rng, 140, reserved);
   const take = () => names.pop();
@@ -271,6 +269,7 @@ function generateVM(bytecode, ctx) {
     ...n,
     wrap: wrapFn,
     moveEnum: ctx.varMap.MOVE,
+    rng,
   });
   const used = [...ctx.usedVariants];
   const items = used.map(v => ({
@@ -285,10 +284,14 @@ function generateVM(bytecode, ctx) {
   const tree = ifTree(items, enumN);
   const encoded = encodeBytes(bytecode, ctx.bytecodeKey, ctx.alphabet);
   const encLit = luaDQuote(encoded);
+  const checksum = checksumBytes(bytecode);
   const ct = ctx.constTypes;
   const cfLimit = rng.range(180, 400);
-  const opaque = opaqueKey(rng);
-  const keyLit = (ctx.bytecodeKey - opaque.delta) | 0;
+  // V4: both master keys are hidden behind independent opaque predicates.
+  const opaqueB = opaqueKey(rng);
+  const opaqueC = opaqueKey(rng);
+  const keyLitB = ctx.bytecodeKey - opaqueB.delta;
+  const keyLitC = ctx.constantKey - opaqueC.delta;
 
   const bit = (src, a, b) => `${gbitN}(${src},${a},${b})`;
   const jn = () => rng.range(8, 90);
@@ -309,8 +312,8 @@ function generateVM(bytecode, ctx) {
       `local _ni=${g32}()`,
       `local _I={}`,
       `for _i=1,_ni do`,
-      `local _d=${g8}()`,
-      `if ${bit('_d', 1, 1)}==0 then local _ty=${bit('_d', 2, 3)};local _m=${bit('_d', 4, 6)};local _e={};_e[${opEnum}]=${g16}();_e[${opA}]=${g16}();if _ty==0 then _e[${opB}]=${g16}();_e[${opC}]=${g16}() elseif _ty==1 then _e[${opB}]=${g32}() elseif _ty==2 then _e[${opB}]=${g32}()-65536 elseif _ty==3 then _e[${opB}]=${g32}()-65536;_e[${opC}]=${g16}() end;if ${bit('_m', 1, 1)}==1 then _e[${opA}]=_K[_e[${opA}]] end;if ${bit('_m', 2, 2)}==1 then _e[${opB}]=_K[_e[${opB}]] end;if ${bit('_m', 3, 3)}==1 then _e[${opC}]=_K[_e[${opC}]] end;_I[#_I+1]=_e end`,
+      `local _shift=${ctx.instructionKey}+_i*17;local _d=(${g8}()-_shift)%256`,
+      `if ${bit('_d', 1, 1)}==0 then local _ty=${bit('_d', 2, 3)};local _m=${bit('_d', 4, 6)};local _e={};_e[${opEnum}]=(${g16}()-_shift)%32768;_e[${opA}]=${g16}();if _ty==0 then _e[${opB}]=${g16}();_e[${opC}]=${g16}() elseif _ty==1 then _e[${opB}]=${g32}() elseif _ty==2 then _e[${opB}]=${g32}()-65536 elseif _ty==3 then _e[${opB}]=${g32}()-65536;_e[${opC}]=${g16}() end;if ${bit('_m', 1, 1)}==1 then _e[${opA}]=_K[_e[${opA}]] end;if ${bit('_m', 2, 2)}==1 then _e[${opB}]=_K[_e[${opB}]] end;if ${bit('_m', 3, 3)}==1 then _e[${opC}]=_K[_e[${opC}]] end;_I[#_I+1]=_e end`,
       `end`,
     ].join(' '),
     functions: [
@@ -325,7 +328,7 @@ function generateVM(bytecode, ctx) {
   const desBody = ctx.protoFormat.map(s => stepCode[s]).join(' ');
 
   const slotOrder = rng.shuffle([
-    [opEnum, 1], [opA, 2], [opB, 3], [opC, 4],
+    [opEnum, ctx.opSlots.enum], [opA, ctx.opSlots.A], [opB, ctx.opSlots.B], [opC, ctx.opSlots.C],
   ]);
   const slotDecls = slotOrder.map(([nm, v]) => `local ${nm}=${v}`).join(';');
 
@@ -385,34 +388,30 @@ local ${csTab}={};
 for e=0x0,0xff do local l=${charN}(e);${csTab}[e]=l;${csTab}[l]=e;end
 local function ${csFn}(e)return ${csTab}[e];end
 local ${decodeN}=(function(a,d)
-local r,l=0x01,0x10;
-local n={{},{},{}};
-local t=-0x01;
-local e=0x01;
-local f=a;
-while true do
-n[0x03][${subN}(d,e,(function()e=r+e;return e-0x01 end)())]=(function()t=t+0x01;return t end)();
-if t==(0x0f)then t="";l=0x000;break;end
-end;
-local t=#d;
-while e<t+0x01 do
-n[0x02][l]=${subN}(d,e,(function()e=r+e;return e-0x01 end)());
-l=l+0x01;
-if l%0x02==0x00 then
-l=0x00;
-n[0x01][#n[0x01]+1]=${charN}(((((n[0x03][n[0x02][0x00]]or 0x00)*0x10)+(n[0x03][n[0x02][0x01]]or 0x00)+f)%0x100));
-f=a+f;
+local st=a%2147483647;if st==0 then st=1 end
+local m={};local o={};local pv=0;local bi=0;local h=nil
+local e=17;local t=#d
+for i=1,16 do m[${subN}(d,i,i)]=i-1 end
+while e<=t do
+local v=m[${subN}(d,e,e)] or 0;e=e+1
+if h==nil then h=v else
+local c;if bi%2==1 then c=h+v*16 else c=h*16+v end
+h=nil;st=(st*48271.0)%2147483647
+o[bi+1]=${charN}((c-(st%256)-pv)%256)
+pv=c;bi=bi+1
 end
 end
-return ${concatN}(n[0x01]);
+return ${concatN}(o)
 end);
 ${decConstN}(${decodeN}(27,${luaDQuote(termEnc)}));
 ${decConstN}(${decodeN}(27,${luaDQuote(extraEnc)}));
-local ${bkN}=(${keyLit}+(function()${opaque.src}end)());
+local ${bkN}=(${keyLitB}+(function()${opaqueB.src}end)());
 ${slotDecls};
 local function ${yFn}(k,...)
 local ${bcN}=${decodeN}(${bkN},${encLit});
-local ${ckN}=0;
+local _hash=0;for _i=1,#${bcN} do _hash=(_hash*31.0+${byteN}(${bcN},_i))%2147483647 end
+if _hash~=${checksum} then error('invalid bytecode') end
+local ${ckN}=(${keyLitC}+(function()${opaqueC.src}end)());
 local ${posCur}=1;
 local function ${posN}(l,e) if e then return ${posCur} end;${posCur}=${posCur}+l;end
 local ${gbitN};${gbitN}=function(b,s,e) if e then local r=(b/2^(s-1))%2^((e-1)-(s-1)+1);return r-r%1 else local p=2^(s-1);return (b%(p+p)>=p) and 1 or 0 end end;
@@ -439,7 +438,7 @@ local function ${readStrN}(n)
 local l
 if(not n)then n=${g32}();if(n==0)then return'';end;end
 l=${subN}(${bcN},${posN}(0,1),${posN}(0,1)+n-1);${posN}(n)
-if #l>1 and ${byteN}(l,1)>127 then local o={};for j=2,#l do o[j-1]=${charN}((${byteN}(l,j)+${ckN})%256)end;return ${concatN}(o)end
+if #l>1 and ${byteN}(l,1)>127 then local o={};local st=(${ckN}+${byteN}(l,1)-128)%2147483647;if st==0 then st=1 end;local pv=0;for j=2,#l do st=(st*48271.0)%2147483647;local c=${byteN}(l,j);o[j-1]=${charN}((c-(st%256)-pv)%256);pv=c end;return ${concatN}(o)end
 return l
 end
 local function ${rFn}(...)
@@ -495,7 +494,8 @@ return ${yFn}((function()local n={}local e=0x01;n[e]=0x02;n[n[e]+0x01]=0x03;retu
 end)((${bitDispatcher()}),...)
 `;
 
-  const header = `([[This file was protected with MoonSec V3]]):gsub('.+', (function(a) ${watermark} = a; end)); return(function(${bitN},...)`;
+  // V4: watermark text is stored as decimal char escapes, never plaintext.
+  const header = `(${luaBin('This file was protected with MoonSec V4')}):gsub('.+', (function(a) ${watermark} = a; end)); return(function(${bitN},...)`;
   return header + minify(inner);
 }
 

@@ -7,7 +7,7 @@
 
 Only the generated output is stored:
 
-- `obfuscated/` — MoonSec V3 output of this obfuscator, `001.lua`–`100.lua`
+- `obfuscated/` — historical MoonSec V3 output of this obfuscator, `001.lua`–`100.lua` (regenerate with `npm run samples` for V4)
 - `index.json` — per-sample id, output path, output bytes, source bytes and seed
 
 The Lua sources are not kept in the repository. They are rebuilt from `Tests/`
