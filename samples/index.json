@@ -1,95 +1,83 @@
 [
   {
     "id": "001",
-    "original": "original/001.lua",
     "obfuscated": "obfuscated/001.lua",
-    "bytes": 24434,
+    "bytes": 24841,
     "origBytes": 4734,
     "seed": 1000
   },
   {
     "id": "002",
-    "original": "original/002.lua",
     "obfuscated": "obfuscated/002.lua",
-    "bytes": 33066,
+    "bytes": 35643,
     "origBytes": 7281,
     "seed": 1097
   },
   {
     "id": "003",
-    "original": "original/003.lua",
     "obfuscated": "obfuscated/003.lua",
-    "bytes": 40610,
+    "bytes": 41453,
     "origBytes": 11301,
     "seed": 1194
   },
   {
     "id": "004",
-    "original": "original/004.lua",
     "obfuscated": "obfuscated/004.lua",
-    "bytes": 25474,
+    "bytes": 25979,
     "origBytes": 6098,
     "seed": 1291
   },
   {
     "id": "005",
-    "original": "original/005.lua",
     "obfuscated": "obfuscated/005.lua",
-    "bytes": 30144,
+    "bytes": 30823,
     "origBytes": 8235,
     "seed": 1388
   },
   {
     "id": "006",
-    "original": "original/006.lua",
     "obfuscated": "obfuscated/006.lua",
-    "bytes": 50408,
+    "bytes": 51952,
     "origBytes": 16170,
     "seed": 1485
   },
   {
     "id": "007",
-    "original": "original/007.lua",
     "obfuscated": "obfuscated/007.lua",
-    "bytes": 37949,
+    "bytes": 38658,
     "origBytes": 7707,
     "seed": 1582
   },
   {
     "id": "008",
-    "original": "original/008.lua",
     "obfuscated": "obfuscated/008.lua",
-    "bytes": 11968,
+    "bytes": 11928,
     "origBytes": 340,
     "seed": 1679
   },
   {
     "id": "009",
-    "original": "original/009.lua",
     "obfuscated": "obfuscated/009.lua",
-    "bytes": 12437,
+    "bytes": 12913,
     "origBytes": 420,
     "seed": 1776
   },
   {
     "id": "010",
-    "original": "original/010.lua",
     "obfuscated": "obfuscated/010.lua",
-    "bytes": 14524,
+    "bytes": 15084,
     "origBytes": 686,
     "seed": 1873
   },
   {
     "id": "011",
-    "original": "original/011.lua",
     "obfuscated": "obfuscated/011.lua",
-    "bytes": 13151,
+    "bytes": 13691,
     "origBytes": 627,
     "seed": 1970
   },
   {
     "id": "012",
-    "original": "original/012.lua",
     "obfuscated": "obfuscated/012.lua",
     "bytes": 12558,
     "origBytes": 518,
@@ -97,15 +85,13 @@
   },
   {
     "id": "013",
-    "original": "original/013.lua",
     "obfuscated": "obfuscated/013.lua",
-    "bytes": 12149,
+    "bytes": 12563,
     "origBytes": 449,
     "seed": 2164
   },
   {
     "id": "014",
-    "original": "original/014.lua",
     "obfuscated": "obfuscated/014.lua",
     "bytes": 12062,
     "origBytes": 589,
@@ -113,15 +99,13 @@
   },
   {
     "id": "015",
-    "original": "original/015.lua",
     "obfuscated": "obfuscated/015.lua",
-    "bytes": 12417,
+    "bytes": 12377,
     "origBytes": 496,
     "seed": 2358
   },
   {
     "id": "016",
-    "original": "original/016.lua",
     "obfuscated": "obfuscated/016.lua",
     "bytes": 12676,
     "origBytes": 671,
@@ -129,7 +113,6 @@
   },
   {
     "id": "017",
-    "original": "original/017.lua",
     "obfuscated": "obfuscated/017.lua",
     "bytes": 11597,
     "origBytes": 375,
@@ -137,7 +120,6 @@
   },
   {
     "id": "018",
-    "original": "original/018.lua",
     "obfuscated": "obfuscated/018.lua",
     "bytes": 11647,
     "origBytes": 336,
@@ -145,7 +127,6 @@
   },
   {
     "id": "019",
-    "original": "original/019.lua",
     "obfuscated": "obfuscated/019.lua",
     "bytes": 11424,
     "origBytes": 293,
@@ -153,135 +134,118 @@
   },
   {
     "id": "020",
-    "original": "original/020.lua",
     "obfuscated": "obfuscated/020.lua",
-    "bytes": 11415,
+    "bytes": 11402,
     "origBytes": 239,
     "seed": 2843
   },
   {
     "id": "021",
-    "original": "original/021.lua",
     "obfuscated": "obfuscated/021.lua",
-    "bytes": 13736,
+    "bytes": 13701,
     "origBytes": 577,
     "seed": 2940
   },
   {
     "id": "022",
-    "original": "original/022.lua",
     "obfuscated": "obfuscated/022.lua",
-    "bytes": 14668,
+    "bytes": 15195,
     "origBytes": 783,
     "seed": 3037
   },
   {
     "id": "023",
-    "original": "original/023.lua",
     "obfuscated": "obfuscated/023.lua",
-    "bytes": 13202,
+    "bytes": 13582,
     "origBytes": 492,
     "seed": 3134
   },
   {
     "id": "024",
-    "original": "original/024.lua",
     "obfuscated": "obfuscated/024.lua",
-    "bytes": 13319,
+    "bytes": 13776,
     "origBytes": 630,
     "seed": 3231
   },
   {
     "id": "025",
-    "original": "original/025.lua",
     "obfuscated": "obfuscated/025.lua",
-    "bytes": 14002,
+    "bytes": 14424,
     "origBytes": 688,
     "seed": 3328
   },
   {
     "id": "026",
-    "original": "original/026.lua",
     "obfuscated": "obfuscated/026.lua",
-    "bytes": 14520,
+    "bytes": 15087,
     "origBytes": 838,
     "seed": 3425
   },
   {
     "id": "027",
-    "original": "original/027.lua",
     "obfuscated": "obfuscated/027.lua",
-    "bytes": 14180,
+    "bytes": 14662,
     "origBytes": 682,
     "seed": 3522
   },
   {
     "id": "028",
-    "original": "original/028.lua",
     "obfuscated": "obfuscated/028.lua",
-    "bytes": 13466,
+    "bytes": 14214,
     "origBytes": 865,
     "seed": 3619
   },
   {
     "id": "029",
-    "original": "original/029.lua",
     "obfuscated": "obfuscated/029.lua",
-    "bytes": 15969,
+    "bytes": 16059,
     "origBytes": 1142,
     "seed": 3716
   },
   {
     "id": "030",
-    "original": "original/030.lua",
     "obfuscated": "obfuscated/030.lua",
-    "bytes": 15291,
+    "bytes": 15757,
     "origBytes": 952,
     "seed": 3813
   },
   {
     "id": "031",
-    "original": "original/031.lua",
     "obfuscated": "obfuscated/031.lua",
-    "bytes": 12593,
+    "bytes": 12575,
     "origBytes": 659,
     "seed": 3910
   },
   {
     "id": "032",
-    "original": "original/032.lua",
     "obfuscated": "obfuscated/032.lua",
-    "bytes": 12720,
+    "bytes": 12684,
     "origBytes": 803,
     "seed": 4007
   },
   {
     "id": "033",
-    "original": "original/033.lua",
     "obfuscated": "obfuscated/033.lua",
-    "bytes": 11752,
+    "bytes": 12204,
     "origBytes": 422,
     "seed": 4104
   },
   {
     "id": "034",
-    "original": "original/034.lua",
     "obfuscated": "obfuscated/034.lua",
-    "bytes": 11213,
+    "bytes": 11704,
     "origBytes": 362,
     "seed": 4201
   },
   {
     "id": "035",
-    "original": "original/035.lua",
     "obfuscated": "obfuscated/035.lua",
-    "bytes": 11702,
+    "bytes": 12123,
     "origBytes": 341,
     "seed": 4298
   },
   {
     "id": "036",
-    "original": "original/036.lua",
     "obfuscated": "obfuscated/036.lua",
     "bytes": 12586,
     "origBytes": 543,
@@ -289,15 +253,13 @@
   },
   {
     "id": "037",
-    "original": "original/037.lua",
     "obfuscated": "obfuscated/037.lua",
-    "bytes": 13316,
+    "bytes": 13838,
     "origBytes": 513,
     "seed": 4492
   },
   {
     "id": "038",
-    "original": "original/038.lua",
     "obfuscated": "obfuscated/038.lua",
     "bytes": 11856,
     "origBytes": 333,
@@ -305,23 +267,20 @@
   },
   {
     "id": "039",
-    "original": "original/039.lua",
     "obfuscated": "obfuscated/039.lua",
-    "bytes": 12023,
+    "bytes": 12444,
     "origBytes": 409,
     "seed": 4686
   },
   {
     "id": "040",
-    "original": "original/040.lua",
     "obfuscated": "obfuscated/040.lua",
-    "bytes": 11495,
+    "bytes": 11922,
     "origBytes": 253,
     "seed": 4783
   },
   {
     "id": "041",
-    "original": "original/041.lua",
     "obfuscated": "obfuscated/041.lua",
     "bytes": 11762,
     "origBytes": 300,
@@ -329,15 +288,13 @@
   },
   {
     "id": "042",
-    "original": "original/042.lua",
     "obfuscated": "obfuscated/042.lua",
-    "bytes": 11995,
+    "bytes": 12420,
     "origBytes": 498,
     "seed": 4977
   },
   {
     "id": "043",
-    "original": "original/043.lua",
     "obfuscated": "obfuscated/043.lua",
     "bytes": 11797,
     "origBytes": 403,
@@ -345,15 +302,13 @@
   },
   {
     "id": "044",
-    "original": "original/044.lua",
     "obfuscated": "obfuscated/044.lua",
-    "bytes": 11173,
+    "bytes": 11603,
     "origBytes": 279,
     "seed": 5171
   },
   {
     "id": "045",
-    "original": "original/045.lua",
     "obfuscated": "obfuscated/045.lua",
     "bytes": 10498,
     "origBytes": 217,
@@ -361,15 +316,13 @@
   },
   {
     "id": "046",
-    "original": "original/046.lua",
     "obfuscated": "obfuscated/046.lua",
-    "bytes": 12782,
+    "bytes": 13204,
     "origBytes": 569,
     "seed": 5365
   },
   {
     "id": "047",
-    "original": "original/047.lua",
     "obfuscated": "obfuscated/047.lua",
     "bytes": 10456,
     "origBytes": 196,
@@ -377,7 +330,6 @@
   },
   {
     "id": "048",
-    "original": "original/048.lua",
     "obfuscated": "obfuscated/048.lua",
     "bytes": 13262,
     "origBytes": 713,
@@ -385,15 +337,13 @@
   },
   {
     "id": "049",
-    "original": "original/049.lua",
     "obfuscated": "obfuscated/049.lua",
-    "bytes": 12641,
+    "bytes": 12706,
     "origBytes": 475,
     "seed": 5656
   },
   {
     "id": "050",
-    "original": "original/050.lua",
     "obfuscated": "obfuscated/050.lua",
     "bytes": 12073,
     "origBytes": 487,
@@ -401,95 +351,83 @@
   },
   {
     "id": "051",
-    "original": "original/051.lua",
     "obfuscated": "obfuscated/051.lua",
-    "bytes": 13031,
+    "bytes": 13451,
     "origBytes": 673,
     "seed": 5850
   },
   {
     "id": "052",
-    "original": "original/052.lua",
     "obfuscated": "obfuscated/052.lua",
-    "bytes": 11714,
+    "bytes": 12151,
     "origBytes": 567,
     "seed": 5947
   },
   {
     "id": "053",
-    "original": "original/053.lua",
     "obfuscated": "obfuscated/053.lua",
-    "bytes": 13494,
+    "bytes": 13919,
     "origBytes": 626,
     "seed": 6044
   },
   {
     "id": "054",
-    "original": "original/054.lua",
     "obfuscated": "obfuscated/054.lua",
-    "bytes": 14466,
+    "bytes": 14796,
     "origBytes": 713,
     "seed": 6141
   },
   {
     "id": "055",
-    "original": "original/055.lua",
     "obfuscated": "obfuscated/055.lua",
-    "bytes": 11742,
+    "bytes": 12119,
     "origBytes": 500,
     "seed": 6238
   },
   {
     "id": "056",
-    "original": "original/056.lua",
     "obfuscated": "obfuscated/056.lua",
-    "bytes": 14770,
+    "bytes": 15156,
     "origBytes": 817,
     "seed": 6335
   },
   {
     "id": "057",
-    "original": "original/057.lua",
     "obfuscated": "obfuscated/057.lua",
-    "bytes": 16597,
+    "bytes": 16965,
     "origBytes": 1069,
     "seed": 6432
   },
   {
     "id": "058",
-    "original": "original/058.lua",
     "obfuscated": "obfuscated/058.lua",
-    "bytes": 12267,
+    "bytes": 12691,
     "origBytes": 529,
     "seed": 6529
   },
   {
     "id": "059",
-    "original": "original/059.lua",
     "obfuscated": "obfuscated/059.lua",
-    "bytes": 11678,
+    "bytes": 12230,
     "origBytes": 398,
     "seed": 6626
   },
   {
     "id": "060",
-    "original": "original/060.lua",
     "obfuscated": "obfuscated/060.lua",
-    "bytes": 13851,
+    "bytes": 14373,
     "origBytes": 723,
     "seed": 6723
   },
   {
     "id": "061",
-    "original": "original/061.lua",
     "obfuscated": "obfuscated/061.lua",
-    "bytes": 10223,
+    "bytes": 10707,
     "origBytes": 246,
     "seed": 6820
   },
   {
     "id": "062",
-    "original": "original/062.lua",
     "obfuscated": "obfuscated/062.lua",
     "bytes": 12258,
     "origBytes": 553,
@@ -497,55 +435,48 @@
   },
   {
     "id": "063",
-    "original": "original/063.lua",
     "obfuscated": "obfuscated/063.lua",
-    "bytes": 12755,
+    "bytes": 13137,
     "origBytes": 507,
     "seed": 7014
   },
   {
     "id": "064",
-    "original": "original/064.lua",
     "obfuscated": "obfuscated/064.lua",
-    "bytes": 12483,
+    "bytes": 12905,
     "origBytes": 509,
     "seed": 7111
   },
   {
     "id": "065",
-    "original": "original/065.lua",
     "obfuscated": "obfuscated/065.lua",
-    "bytes": 13824,
+    "bytes": 14305,
     "origBytes": 733,
     "seed": 7208
   },
   {
     "id": "066",
-    "original": "original/066.lua",
     "obfuscated": "obfuscated/066.lua",
-    "bytes": 13143,
+    "bytes": 13496,
     "origBytes": 501,
     "seed": 7305
   },
   {
     "id": "067",
-    "original": "original/067.lua",
     "obfuscated": "obfuscated/067.lua",
-    "bytes": 12653,
+    "bytes": 13151,
     "origBytes": 438,
     "seed": 7402
   },
   {
     "id": "068",
-    "original": "original/068.lua",
     "obfuscated": "obfuscated/068.lua",
-    "bytes": 11475,
+    "bytes": 11917,
     "origBytes": 339,
     "seed": 7499
   },
   {
     "id": "069",
-    "original": "original/069.lua",
     "obfuscated": "obfuscated/069.lua",
     "bytes": 12371,
     "origBytes": 438,
@@ -553,7 +484,6 @@
   },
   {
     "id": "070",
-    "original": "original/070.lua",
     "obfuscated": "obfuscated/070.lua",
     "bytes": 12246,
     "origBytes": 403,
@@ -561,111 +491,97 @@
   },
   {
     "id": "071",
-    "original": "original/071.lua",
     "obfuscated": "obfuscated/071.lua",
-    "bytes": 12647,
+    "bytes": 12729,
     "origBytes": 466,
     "seed": 7790
   },
   {
     "id": "072",
-    "original": "original/072.lua",
     "obfuscated": "obfuscated/072.lua",
-    "bytes": 12126,
+    "bytes": 12110,
     "origBytes": 376,
     "seed": 7887
   },
   {
     "id": "073",
-    "original": "original/073.lua",
     "obfuscated": "obfuscated/073.lua",
-    "bytes": 14222,
+    "bytes": 14804,
     "origBytes": 729,
     "seed": 7984
   },
   {
     "id": "074",
-    "original": "original/074.lua",
     "obfuscated": "obfuscated/074.lua",
-    "bytes": 13681,
+    "bytes": 14183,
     "origBytes": 732,
     "seed": 8081
   },
   {
     "id": "075",
-    "original": "original/075.lua",
     "obfuscated": "obfuscated/075.lua",
-    "bytes": 13126,
+    "bytes": 13813,
     "origBytes": 728,
     "seed": 8178
   },
   {
     "id": "076",
-    "original": "original/076.lua",
     "obfuscated": "obfuscated/076.lua",
-    "bytes": 12261,
+    "bytes": 12699,
     "origBytes": 488,
     "seed": 8275
   },
   {
     "id": "077",
-    "original": "original/077.lua",
     "obfuscated": "obfuscated/077.lua",
-    "bytes": 12226,
+    "bytes": 12668,
     "origBytes": 442,
     "seed": 8372
   },
   {
     "id": "078",
-    "original": "original/078.lua",
     "obfuscated": "obfuscated/078.lua",
-    "bytes": 12840,
+    "bytes": 13238,
     "origBytes": 523,
     "seed": 8469
   },
   {
     "id": "079",
-    "original": "original/079.lua",
     "obfuscated": "obfuscated/079.lua",
-    "bytes": 11578,
+    "bytes": 11524,
     "origBytes": 300,
     "seed": 8566
   },
   {
     "id": "080",
-    "original": "original/080.lua",
     "obfuscated": "obfuscated/080.lua",
-    "bytes": 12592,
+    "bytes": 12653,
     "origBytes": 405,
     "seed": 8663
   },
   {
     "id": "081",
-    "original": "original/081.lua",
     "obfuscated": "obfuscated/081.lua",
-    "bytes": 11714,
+    "bytes": 12163,
     "origBytes": 372,
     "seed": 8760
   },
   {
     "id": "082",
-    "original": "original/082.lua",
     "obfuscated": "obfuscated/082.lua",
-    "bytes": 12884,
+    "bytes": 12867,
     "origBytes": 397,
     "seed": 8857
   },
   {
     "id": "083",
-    "original": "original/083.lua",
     "obfuscated": "obfuscated/083.lua",
-    "bytes": 13435,
+    "bytes": 13874,
     "origBytes": 674,
     "seed": 8954
   },
   {
     "id": "084",
-    "original": "original/084.lua",
     "obfuscated": "obfuscated/084.lua",
     "bytes": 11876,
     "origBytes": 400,
@@ -673,15 +589,13 @@
   },
   {
     "id": "085",
-    "original": "original/085.lua",
     "obfuscated": "obfuscated/085.lua",
-    "bytes": 13249,
+    "bytes": 13690,
     "origBytes": 550,
     "seed": 9148
   },
   {
     "id": "086",
-    "original": "original/086.lua",
     "obfuscated": "obfuscated/086.lua",
     "bytes": 11957,
     "origBytes": 433,
@@ -689,79 +603,69 @@
   },
   {
     "id": "087",
-    "original": "original/087.lua",
     "obfuscated": "obfuscated/087.lua",
-    "bytes": 12139,
+    "bytes": 12574,
     "origBytes": 418,
     "seed": 9342
   },
   {
     "id": "088",
-    "original": "original/088.lua",
     "obfuscated": "obfuscated/088.lua",
-    "bytes": 14234,
+    "bytes": 14737,
     "origBytes": 763,
     "seed": 9439
   },
   {
     "id": "089",
-    "original": "original/089.lua",
     "obfuscated": "obfuscated/089.lua",
-    "bytes": 12273,
+    "bytes": 12677,
     "origBytes": 381,
     "seed": 9536
   },
   {
     "id": "090",
-    "original": "original/090.lua",
     "obfuscated": "obfuscated/090.lua",
-    "bytes": 12582,
+    "bytes": 12568,
     "origBytes": 469,
     "seed": 9633
   },
   {
     "id": "091",
-    "original": "original/091.lua",
     "obfuscated": "obfuscated/091.lua",
-    "bytes": 12580,
+    "bytes": 12559,
     "origBytes": 409,
     "seed": 9730
   },
   {
     "id": "092",
-    "original": "original/092.lua",
     "obfuscated": "obfuscated/092.lua",
-    "bytes": 12851,
+    "bytes": 13366,
     "origBytes": 545,
     "seed": 9827
   },
   {
     "id": "093",
-    "original": "original/093.lua",
     "obfuscated": "obfuscated/093.lua",
-    "bytes": 12396,
+    "bytes": 12796,
     "origBytes": 393,
     "seed": 9924
   },
   {
     "id": "094",
-    "original": "original/094.lua",
     "obfuscated": "obfuscated/094.lua",
-    "bytes": 11475,
+    "bytes": 11898,
     "origBytes": 400,
     "seed": 10021
   },
   {
     "id": "095",
-    "original": "original/095.lua",
     "obfuscated": "obfuscated/095.lua",
-    "bytes": 12216,
+    "bytes": 12635,
     "origBytes": 474,
     "seed": 10118
   },
   {
     "id": "096",
-    "original": "original/096.lua",
     "obfuscated": "obfuscated/096.lua",
     "bytes": 12045,
     "origBytes": 431,
@@ -769,7 +673,6 @@
   },
   {
     "id": "097",
-    "original": "original/097.lua",
     "obfuscated": "obfuscated/097.lua",
     "bytes": 13318,
     "origBytes": 654,
@@ -777,25 +680,22 @@
   },
   {
     "id": "098",
-    "original": "original/098.lua",
     "obfuscated": "obfuscated/098.lua",
-    "bytes": 11448,
+    "bytes": 11892,
     "origBytes": 382,
     "seed": 10409
   },
   {
     "id": "099",
-    "original": "original/099.lua",
     "obfuscated": "obfuscated/099.lua",
-    "bytes": 12696,
+    "bytes": 13047,
     "origBytes": 425,
     "seed": 10506
   },
   {
     "id": "100",
-    "original": "original/100.lua",
     "obfuscated": "obfuscated/100.lua",
-    "bytes": 11941,
+    "bytes": 12340,
     "origBytes": 388,
     "seed": 10603
   }

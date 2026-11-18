@@ -377,10 +377,13 @@ class Compiler {
     this.leaveScope();
     this.patchToHere(jmp);
     this.patchContinues(this.fs.proto.instructions.length);
+    // Lua 5.1 generic-for layout (verified against luac -l): TFORLOOP is
+    // followed by a JMP back to the body start. On a non-nil iterator result
+    // control falls into that JMP (loop again); on a nil result TFORLOOP must
+    // skip it and land on the exit target. See the TFORLOOP VM handler.
     this.emit(OpCode.TFORLOOP, base, 0, s.names.length);
-    this.emit(OpCode.JMP, 0, jmp.pc - (this.fs.proto.instructions.length), 0);
-    const j = this.fs.proto.instructions[this.fs.proto.instructions.length - 1];
-    j.b = (jmp.pc + 1) - (j.pc + 1);
+    const back = this.emit(OpCode.JMP, 0, 0, 0);
+    back.b = (jmp.pc + 1) - (back.pc + 1);
     this.patchBreaks();
     this.leaveScope();
   }

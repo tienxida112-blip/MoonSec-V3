@@ -7,6 +7,9 @@ const { encodeConstant, decodeConstant } = require('../encode');
 const PROTO_STEPS = ['instructions', 'constants', 'functions', 'numparams'];
 
 function instTypeCode(op, inst) {
+  // The VM stores CLOSURE's child-proto index in B and its captured-upvalue
+  // descriptor count in C, so encode it as ABC instead of Lua's native ABx.
+  if (op === OpCode.CLOSURE) return 0;
   const t = getOpType(op);
   if (t === OpType.ABx) return 1;
   if (t === OpType.sBx) return 2;
@@ -73,7 +76,9 @@ function writeConstants(w, proto, ctx) {
 
 function writeInstructions(w, proto, ctx) {
   const map = ctx.opMap;
-  const insts = proto.instructions.filter(ins => !ins.upval);
+  // Preserve CLOSURE's following MOVE/GETUPVAL capture descriptors. The VM
+  // advances over these records inside its CLOSURE handler.
+  const insts = proto.instructions;
   w.i32(insts.length);
   for (let i = 0; i < insts.length; i++) {
     const ins = insts[i];

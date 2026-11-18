@@ -267,7 +267,11 @@ function generateVM(bytecode, ctx) {
   const extraEnc = encodeBytes(Buffer.from(extraBlob, 'binary'), 27, ctx.alphabet);
   const termEnc = encodeBytes(Buffer.from([5]), 27, ctx.alphabet);
 
-  const H = handlers({ ...n, wrap: wrapFn });
+  const H = handlers({
+    ...n,
+    wrap: wrapFn,
+    moveEnum: ctx.varMap.MOVE,
+  });
   const used = [...ctx.usedVariants];
   const items = used.map(v => ({
     num: ctx.varMap[v],

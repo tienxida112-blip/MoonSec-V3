@@ -33,11 +33,17 @@ function variantOf(ins) {
     case OpCode.EQ:
     case OpCode.LT:
     case OpCode.LE: {
+      // Only compares fused with a following JMP may jump. A compare used as a
+      // value (the compiler emits EQ/LT/LE + LOADBOOL + LOADBOOL) must merely
+      // skip the next instruction, otherwise its "false" branch would use the
+      // operand register number as a jump target.
+      const k = leftK ? (rightK ? 'KK' : 'KR') : (rightK ? 'RK' : 'RR');
+      // Value context keeps Lua 5.1's A flag: skip the next instruction when
+      // the comparison result equals A. `~=` sets A=1, so it needs its own
+      // variant; ignoring A made `a ~= b` evaluate as `a == b`.
+      if (!ins.fusedCmp) return op + 'V' + ((ins.a | 0) ? '1' : '0') + k;
       const inv = invert ? 'N' : 'P';
-      if (leftK && rightK) return op + inv + 'KK';
-      if (leftK) return op + inv + 'KR';
-      if (rightK) return op + inv + 'RK';
-      return op + inv + 'RR';
+      return op + inv + k;
     }
     case OpCode.TEST: return ins.c ? 'TESTC' : 'TEST';
     case OpCode.CALL: {
@@ -78,10 +84,11 @@ function variantOf(ins) {
 }
 
 function handlers(n) {
-  const S = n.stk, I = n.inst, P = n.pc, E = n.env, U = n.upv;
+  const S = n.stk, I = n.inst, IS = n.insts, P = n.pc, E = n.env, U = n.upv;
   const W = n.wrap, R = n.protos, UN = n.unpack, T = n.top, RR = n._R;
   const IA = `${I}[OP_A]`, IB = `${I}[OP_B]`, IC = `${I}[OP_C]`;
   const sA = `${S}[${IA}]`, sB = `${S}[${IB}]`, sC = `${S}[${IC}]`;
+  const moveEnum = n.moveEnum === undefined ? -1 : n.moveEnum;
 
   const H = {
     MOVE: `${sA}=${sB}`,
@@ -136,11 +143,10 @@ function handlers(n) {
     RETURN: `local _879=${IA};do return ${UN}(${S},_879,_879+${IB}) end`,
     FORLOOP: `local _144=${IA};local _145=${S}[_144+2];local _146=${S}[_144]+_145;${S}[_144]=_146;if _145>0 then if _146<=${S}[_144+1] then ${P}=${IB};${S}[_144+3]=_146 end elseif _146>=${S}[_144+1] then ${P}=${IB};${S}[_144+3]=_146 end`,
     FORPREP: `local _200=${IA};local _201=${S}[_200];local _202=${S}[_200+2];if _202>0 then if _201>${S}[_200+1] then ${P}=${IB} else ${S}[_200+3]=_201 end elseif _201<${S}[_200+1] then ${P}=${IB} else ${S}[_200+3]=_201 end`,
-    TFORLOOP: `local _180=${IA};local _181=${IC};local _182=_180+2;local _183={${S}[_180](${S}[_180+1],${S}[_182])};for _184=1,_181 do ${S}[_182+_184]=_183[_184] end;local _185=_183[1];if _185 then ${S}[_182]=_185;${P}=${IB} else ${P}=${P}+1 end`,
-    SETLIST: `local _504=${IA};local _505=${S}[_504];for _506=(_504+1),${IB} do table.insert(_505,${S}[_506]) end`,
+    TFORLOOP: `local _180=${IA};local _181=${IC};local _182=_180+2;local _183={${S}[_180](${S}[_180+1],${S}[_182])};for _184=1,_181 do ${S}[_182+_184]=_183[_184] end;local _185=_183[1];if _185 then ${S}[_182]=_185 else ${P}=${P}+1 end`,    SETLIST: `local _504=${IA};local _505=${S}[_504];for _506=(_504+1),${IB} do table.insert(_505,${S}[_506]) end`,
     SETLISTV: `local _273=${IA};local _275=${S}[_273];for _277=(_273+1),${T} do table.insert(_275,${S}[_277]) end`,
     CLOSE: `local _277={};for _278=1,#${n.lupv} do local _279=${n.lupv}[_278];for _280=0,#_279 do local _281=_279[_280];local _282=_281[1];local _283=_281[2];if (_282==${S})and(_283>=${IA}) then _277[_283]=_282[_283];_281[1]=_277 end end end`,
-    CLOSURE: `${sA}=${W}(${R}[${IB}],nil,${E})`,
+    CLOSURE: `local _uProto=${R}[${IB}+1];if ${IC}>0 then local _uIndex={};local _uValues=setmetatable({},{__index=function(_,k)local r=_uIndex[k];return r[1][r[2]] end,__newindex=function(_,k,v)local r=_uIndex[k];r[1][r[2]]=v end});for _u=1,${IC} do ${P}=${P}+1;local _d=${IS}[${P}];if _d[OP_ENUM]==${moveEnum} then _uIndex[_u-1]={${S},_d[OP_B]} else _uIndex[_u-1]={${U},_d[OP_B]} end;${n.lupv}[#${n.lupv}+1]=_uIndex end;${sA}=${W}(_uProto,_uValues,${E}) else ${sA}=${W}(_uProto,nil,${E}) end`,
     VARARG: `local _328=${IA};local _329=${IB};for _330=_328,_329 do ${S}[_330]=${n.vararg}[_330-_328] end`,
     VARARGV: `local _273=${IA};${T}=((_273+${n.varargz})-1);for _276=_273,${T} do local _274=${n.vararg}[(_276-_273)];${S}[_276]=_274 end`,
   };
@@ -160,6 +166,26 @@ function handlers(n) {
     }
     return `if ${l}${rel}${r} then ${P}=${IB} else ${P}=${P}+1 end`;
   }
+  // Value-context compare: Lua 5.1 skips the following instruction when the
+  // comparison result equals the A flag. A=1 variants implement `~=`.
+  const cmpValue = (op, l, r) => {
+    const rel = op === 'EQ' ? '==' : op === 'LT' ? '<' : '<=';
+    return `if ${l}${rel}${r} then ${P}=${P}+1 end`;
+  };
+  const cmpValueN = (op, l, r) => {
+    const rel = op === 'EQ' ? '~=' : op === 'LT' ? '>=' : '>';
+    return `if ${l}${rel}${r} then ${P}=${P}+1 end`;
+  };
+  // Non-fused compares keep Lua 5.1's operand layout: A is the skip flag, B is
+  // the left operand and C the right operand. (Only the fused P/N forms move the
+  // left operand into A and the jump target into B.)
+  for (const op of ['EQ', 'LT', 'LE']) {
+    const operands = { RR: [sB, sC], RK: [sB, IC], KR: [IB, sC], KK: [IB, IC] };
+    for (const [k, [l, r]] of Object.entries(operands)) {
+      H[op + 'V0' + k] = cmpValue(op, l, r);
+      H[op + 'V1' + k] = cmpValueN(op, l, r);
+    }
+  }
   for (const op of ['EQ', 'LT', 'LE']) {
     H[op + 'PRR'] = cmp(op, sA, sC, false);
     H[op + 'PRK'] = cmp(op, sA, IC, false);
@@ -175,8 +201,10 @@ function handlers(n) {
 
 function collectVariants(proto, set = new Set()) {
   for (const ins of proto.instructions) {
-    if (ins.upval) continue;
-    set.add(variantOf(ins));
+    // CLOSURE's inline MOVE/GETUPVAL descriptors are serialized opcodes too;
+    // the VM consumes them while building the closure, rather than dispatching
+    // them as ordinary instructions.
+    set.add(ins.upval ? ins.op : variantOf(ins));
   }
   for (const f of proto.functions) collectVariants(f, set);
   return set;

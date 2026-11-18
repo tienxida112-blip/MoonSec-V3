@@ -47,36 +47,6 @@ function fuseCompares(proto) {
   for (const f of proto.functions) fuseCompares(f);
 }
 
-function stripUpvalueDummies(proto) {
-  const insts = proto.instructions;
-  const map = new Array(insts.length + 1);
-  let np = 0;
-  for (let i = 0; i < insts.length; i++) {
-    map[i] = np;
-    if (!insts[i].upval) np++;
-  }
-  map[insts.length] = np;
-
-  const remapRel = (ins) => {
-    const oldPc = ins.pc;
-    let target = oldPc + 1 + (ins.b | 0);
-    if (target < 0) target = 0;
-    if (target > insts.length) target = insts.length;
-    ins.b = map[target] - (map[oldPc] + 1);
-  };
-
-  for (const ins of insts) {
-    if (ins.upval) continue;
-    if (ins.op === OpCode.JMP || ins.op === OpCode.FORPREP || ins.op === OpCode.FORLOOP) {
-      remapRel(ins);
-    }
-  }
-
-  proto.instructions = insts.filter(ins => !ins.upval);
-  for (let i = 0; i < proto.instructions.length; i++) proto.instructions[i].pc = i;
-  for (const f of proto.functions) stripUpvalueDummies(f);
-}
-
 function assignOpcodes(variants, rng) {
   const list = [...variants];
   const nums = rng.shuffle(Array.from({ length: Math.max(list.length + 8, 24) }, (_, i) => i));
@@ -105,7 +75,8 @@ function obfuscate(source, options = {}) {
     err.cause = e;
     throw err;
   }
-  stripUpvalueDummies(proto);
+  // Keep Lua 5.1 CLOSURE binding instructions in the bytecode. The VM's
+  // CLOSURE handler consumes them inline to construct open/closed upvalues.
   if (options.watermark !== false) injectWatermark(proto);
   fuseCompares(proto);
 

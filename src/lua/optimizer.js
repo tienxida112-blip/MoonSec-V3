@@ -20,6 +20,10 @@ function optimizeProto(root) {
     for (let i = 0; i < old.length; i++) {
       const ins = old[i];
       if (remove.has(i)) continue;
+      // LOADBOOL's C bit skips the next physical instruction. If that slot is
+      // removed, clear the skip bit so execution still reaches the same next
+      // surviving instruction after compaction.
+      if (ins.op === O.LOADBOOL && (ins.c | 0) !== 0 && remove.has(i + 1)) ins.c = 0;
       if (ins.op === O.JMP || ins.op === O.FORPREP || ins.op === O.FORLOOP) {
         const target = Math.max(0, Math.min(old.length, i + 1 + (ins.b | 0)));
         ins.b = map[target] - (map[i] + 1);
@@ -28,6 +32,12 @@ function optimizeProto(root) {
 
     proto.instructions = old.filter((_, i) => !remove.has(i));
     for (let i = 0; i < proto.instructions.length; i++) proto.instructions[i].pc = i;
+    // Keep debug/local lifetime ranges aligned with the compacted instruction
+    // stream. End positions are exclusive, so map them as instruction edges.
+    for (const local of proto.locals || []) {
+      if (Number.isInteger(local.startpc)) local.startpc = map[Math.max(0, Math.min(old.length, local.startpc))];
+      if (Number.isInteger(local.endpc)) local.endpc = map[Math.max(0, Math.min(old.length, local.endpc))];
+    }
   }
 
   function optimizeOne(proto) {
@@ -120,7 +130,10 @@ function optimizeProto(root) {
       };
       if (x.op === O.JMP) addSuccessor(i + 1 + (x.b | 0));
       else if (x.op === O.RETURN || x.op === O.TAILCALL) { /* terminal */ }
-      else if ([O.EQ, O.LT, O.LE, O.TEST, O.TESTSET, O.TFORLOOP].includes(x.op)) {
+      else if (x.op === O.LOADBOOL && (x.c | 0) !== 0) {
+        // Lua 5.1 LOADBOOL with C=1 skips the following instruction.
+        addSuccessor(i + 2);
+      } else if ([O.EQ, O.LT, O.LE, O.TEST, O.TESTSET, O.TFORLOOP].includes(x.op)) {
         addSuccessor(i + 1); addSuccessor(i + 2);
       } else if (x.op === O.FORPREP || x.op === O.FORLOOP) {
         addSuccessor(i + 1); addSuccessor(i + 1 + (x.b | 0));
@@ -152,9 +165,27 @@ function optimizeProto(root) {
       }
     }
 
+    // Mark code reachable from the entry point. This is especially important
+    // for LOADBOOL C=1: the following instruction is skipped unconditionally,
+    // and must not remain a fake CFG predecessor of later reads.
+    const reachable = new Set();
+    const work = [0];
+    while (work.length) {
+      const i = work.pop();
+      if (i < 0 || i >= n || reachable.has(i)) continue;
+      reachable.add(i);
+      for (const target of successors[i]) work.push(target);
+    }
+
     const remove = new Set();
     for (let i = 0; i < n; i++) {
       const x = ins[i];
+      if (!reachable.has(i)) { remove.add(i); continue; }
+      // Identity moves and jumps to the next instruction have no runtime
+      // effect. Removing them also shortens the serialized prototype safely;
+      // compact() redirects all incoming relative branches.
+      if (!x.upval && x.op === O.MOVE && (x.a | 0) === (x.b | 0)) remove.add(i);
+      if (!x.upval && x.op === O.JMP && i + 1 + (x.b | 0) === i + 1) remove.add(i);
       if (x.upval || ![O.MOVE, O.LOADK, O.LOADBOOL, O.LOADNIL, O.GETUPVAL, O.NEWTABLE].includes(x.op)) continue;
       // LOADBOOL with C=1 is also a skip-next branch, so it is not a pure write.
       if (x.op === O.LOADBOOL && (x.c | 0) !== 0) continue;

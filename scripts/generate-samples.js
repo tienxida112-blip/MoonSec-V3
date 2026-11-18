@@ -8,7 +8,7 @@ const { benches } = require('./unique-benches');
 const ROOT = path.join(__dirname, '..', 'samples');
 const ORIG = path.join(ROOT, 'original');
 const OBF = path.join(ROOT, 'obfuscated');
-const FIX = path.join(__dirname, '..', 'fixtures');
+const FIX = path.join(__dirname, '..', 'Tests');
 
 function pad(n) { return String(n).padStart(3, '0'); }
 
@@ -44,8 +44,9 @@ function loadFixtures() {
 }
 
 function main() {
-  fs.mkdirSync(ORIG, { recursive: true });
   fs.mkdirSync(OBF, { recursive: true });
+  // The repository ships only generated output; `samples/original/` is not kept.
+  if (fs.existsSync(ORIG)) fs.rmSync(ORIG, { recursive: true, force: true });
 
   const extra = benches();
   const list = loadFixtures().concat(extra.slice(0, 93));
@@ -76,7 +77,6 @@ function main() {
   for (let i = 0; i < list.length; i++) {
     const n = pad(i + 1);
     const src = '-- MoonSec V3 sample ' + n + '\n' + list[i] + '\n';
-    fs.writeFileSync(path.join(ORIG, n + '.lua'), src);
     let res;
     try {
       res = obfuscate(src, { seed: 1000 + i * 97 });
@@ -87,7 +87,6 @@ function main() {
     fs.writeFileSync(path.join(OBF, n + '.lua'), res.output);
     index.push({
       id: n,
-      original: 'original/' + n + '.lua',
       obfuscated: 'obfuscated/' + n + '.lua',
       bytes: res.output.length,
       origBytes: src.length,
@@ -97,7 +96,7 @@ function main() {
   }
   fs.writeFileSync(path.join(ROOT, 'index.json'), JSON.stringify(index, null, 2));
   const bytes = index.reduce((s, x) => s + x.bytes, 0);
-  console.log('\nwrote 100 samples to', ROOT, 'obf sum', bytes);
+  console.log('\nwrote ' + index.length + ' obfuscated samples to', OBF, 'sum', bytes);
 }
 
 main();
