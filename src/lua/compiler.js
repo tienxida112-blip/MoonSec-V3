@@ -33,7 +33,7 @@ class Compiler {
   compile(ast) {
     const proto = new Proto();
     proto.isVararg = true;
-    this.fs = { proto, freereg: 0, nactvar: 0, scopes: [], breaks: [], continues: [], pc: () => proto.instructions.length };
+    this.fs = { proto, freereg: 0, nactvar: 0, scopes: [], breaks: [], continues: [], captured: new Set(), pc: () => proto.instructions.length };
     this.block(ast.body);
     this.emit(OpCode.RETURN, 0, 1, 0);
     proto.maxStack = Math.max(proto.maxStack, this.fs.freereg, 2);
@@ -45,9 +45,25 @@ class Compiler {
     this.fs.scopes.push({ nactvar: this.fs.nactvar, breaks: [] });
   }
 
+  // Close any open upvalue created for a register >= fromReg.
+  maybeClose(fromReg) {
+    // findUpval records captures on the owning Proto, because it runs while the
+    // child function's state is active.
+    const captured = this.fs.proto.captured || this.fs.captured;
+    if (!captured || !captured.size) return;
+    for (const r of captured) {
+      if (r >= fromReg) { this.emit(OpCode.CLOSE, fromReg, 0, 0); return; }
+    }
+  }
+
   leaveScope() {
     const sc = this.fs.scopes.pop();
     const proto = this.fs.proto;
+    // A register captured by a nested closure keeps the open upvalue alive
+    // until the block ends, so leaving the block must close it. Without this
+    // every closure made in a loop shares one register: `for i=1,3 do
+    // fs[i]=function() return i end end` returned 3,3,3 instead of 1,2,3.
+    this.maybeClose(sc.nactvar);
     while (this.fs.nactvar > sc.nactvar) {
       const reg = this.fs.nactvar - 1;
       for (let i = proto.locals.length - 1; i >= 0; i--) {
@@ -140,6 +156,8 @@ class Compiler {
         if (loc[i].endpc === -1 && loc[i].name === name) { found = loc[i].reg; break; }
       }
       if (found >= 0) {
+        if (!level.captured) level.captured = new Set();
+        level.captured.add(found);
         let idx = this.addUpval(cur, name, true, found);
         for (let c = chain.length - 2; c >= 0; c--) {
           idx = this.addUpvalOn(chain[c], name, false, idx);
@@ -208,15 +226,26 @@ class Compiler {
     const base = this.fs.freereg;
     for (let i = 0; i < nvals; i++) {
       const last = i === nvals - 1;
-      if (last && nvals < n) this.exprToNext(s.values[i], n - nvals + 1);
+      // The last expression of a `local` list is multi-valued when the list is
+      // shorter than the name list (`local p, q = f()`), and must be truncated
+      // to exactly one value when it is longer (`local a = f()`).
+      if (last) this.exprToNext(s.values[i], nvals < n ? n - nvals + 1 : 1);
       else this.exprToNext(s.values[i], 1);
     }
     if (nvals === 0) {
       this.emit(OpCode.LOADNIL, base, base + n - 1, 0);
       this.fs.freereg = base + n;
     } else if (nvals < n) {
-      const start = base + nvals;
-      this.emit(OpCode.LOADNIL, start, base + n - 1, 0);
+      // A trailing call/vararg already filled the remaining slots with its
+      // extra results (CALL was emitted with n-nvals+1 results above). Padding
+      // with LOADNIL there would overwrite real values: `local p, q = f()`
+      // used to load nil over the second result.
+      const tail = s.values[nvals - 1];
+      const multi = tail && (tail.type === 'call' || tail.type === 'vararg');
+      if (!multi) {
+        const start = base + nvals;
+        this.emit(OpCode.LOADNIL, start, base + n - 1, 0);
+      }
       this.fs.freereg = base + n;
     }
     for (const name of s.names) this.newLocal(name);
@@ -226,28 +255,63 @@ class Compiler {
   statAssign(s) {
     const nvars = s.vars.length;
     const nvals = s.values.length;
-    const temps = [];
+
+    // Lua already defines the order here: every table/key expression on the
+    // left is evaluated first, then every value on the right, then the stores
+    // happen left to right. Doing it in that order means the value registers
+    // can be held in locals past freereg, so no temporary can collide with a
+    // table or key register already computed (`t[1],t[2] = 1,2` used to have
+    // its `t[...]` stores overwrite the value registers).
+    const targets = [];
+    for (let v = 0; v < nvars; v++) {
+      const t = s.vars[v];
+      if (t.type === 'index') {
+        const tab = this.exprToReg(t.table);
+        const key = this.exprRK(t.key);
+        targets.push({ type: 'index', tab, key });
+      } else if (t.type === 'name') {
+        // `a.x = 1` parses as a name path; resolve its root once.
+        const loc = this.findLocal(t.name);
+        const uv = this.findUpval(t.name);
+        targets.push({ type: 'name', loc, uv, name: t.name });
+      } else {
+        targets.push({ type: 'raw', node: t });
+      }
+    }
+    // Root tables read before the values are computed stay valid only if a
+    // value expression cannot change them, which holds for lvalues built from
+    // names/indices of names, the normal case here.
+    const start = this.fs.freereg;
     for (let i = 0; i < nvals; i++) {
       const last = i === nvals - 1;
       const want = last && nvals < nvars ? nvars - nvals + 1 : 1;
-      const r = this.exprToNext(s.values[i], want);
-      temps.push(r);
+      this.exprToNext(s.values[i], want);
     }
     if (nvals < nvars) {
-      const start = this.fs.freereg;
-      this.emit(OpCode.LOADNIL, start, start + (nvars - nvals) - 1, 0);
-      this.fs.freereg = start + (nvars - nvals);
+      const r = this.fs.freereg;
+      this.emit(OpCode.LOADNIL, r, r + (nvars - nvals) - 1, 0);
+      this.fs.freereg = r + (nvars - nvals);
     }
-    const results = [];
-    let reg = this.fs.nactvar;
-    for (let i = 0; i < nvars; i++) {
-      results.push(reg);
-      reg++;
-    }
+    const top = this.fs.freereg;
+
+    // Store right to left: an earlier target may itself be a variable used as
+    // a later target's table, and Lua assigns left to right, so working
+    // backwards keeps every table register live.
     for (let i = nvars - 1; i >= 0; i--) {
-      this.storeVar(s.vars[i], this.fs.nactvar + i);
+      const src = start + i;
+      const t = targets[i];
+      if (t.type === 'index') {
+        this.emit(OpCode.SETTABLE, t.tab, t.key, src);
+      } else if (t.type === 'name') {
+        if (t.loc >= 0) this.emit(OpCode.MOVE, t.loc, src, 0);
+        else if (t.uv >= 0) this.emit(OpCode.SETUPVAL, src, t.uv, 0);
+        else this.emit(OpCode.SETGLOBAL, src, this.kst(t.name), 0);
+      } else {
+        this.storeVar(t.node, src);
+      }
     }
     this.fs.freereg = this.fs.nactvar;
+    this.fs.proto.maxStack = Math.max(this.fs.proto.maxStack, top);
   }
 
   storeVar(v, src) {
@@ -345,10 +409,16 @@ class Compiler {
     this.leaveScope();
     const loopPc = this.fs.proto.instructions.length;
     this.patchContinues(loopPc);
+    // The control variable is re-bound every iteration, so a closure created in
+    // the body must get a fresh upvalue per iteration.
+    this.maybeClose(base);
+    // FORLOOP must be located *after* the optional CLOSE, otherwise the
+    // back-edge lands on the CLOSE instead of the loop head.
+    const footerPc = this.fs.proto.instructions.length;
     this.emit(OpCode.FORLOOP, base, 0, 0);
-    prep.b = loopPc - (prep.pc + 1);
-    const loop = this.fs.proto.instructions[loopPc];
-    loop.b = prep.pc - loopPc;
+    prep.b = footerPc - (prep.pc + 1);
+    const loop = this.fs.proto.instructions[footerPc];
+    loop.b = prep.pc - footerPc;
     this.patchBreaks();
     this.leaveScope();
   }
@@ -399,7 +469,11 @@ class Compiler {
     } else if (!s.name) {
       const r = this.reserve(1);
       this.emitClosure(r, bx, proto);
+      this.fs.freereg = this.fs.nactvar;
     } else {
+      // `function F() ... end` must not clobber an existing local that happens
+      // to sit at freereg: `local a, b; function F() ... end` used to emit the
+      // CLOSURE into a's register, silently replacing it.
       const r = this.reserve(1);
       this.emitClosure(r, bx, proto);
       this.storeNamePath(s.name, r, s.method);
@@ -436,7 +510,7 @@ class Compiler {
     proto.numParams = s.params.length;
     proto.isVararg = !!s.vararg;
     const saved = this.fs;
-    this.fs = { proto, freereg: 0, nactvar: 0, scopes: [], breaks: [], continues: [], pc: () => proto.instructions.length };
+    this.fs = { proto, freereg: 0, nactvar: 0, scopes: [], breaks: [], continues: [], captured: new Set(), pc: () => proto.instructions.length };
     for (const p of s.params) this.newLocal(p);
     this.block(s.body);
     this.emit(OpCode.RETURN, 0, 1, 0);
@@ -580,6 +654,9 @@ class Compiler {
 
   exprToRegDest(e, dest, nresults = 1) {
     switch (e.type) {
+      case 'paren':
+        this.exprToRegDest(e.expr, dest, 1);
+        break;
       case 'literal':
         this.loadConst(dest, e.value);
         break;
@@ -709,9 +786,22 @@ class Compiler {
   }
 
   exprIndex(e, dest) {
+    // A chain rooted at a *global* used to bounce through a scratch register:
+    // `GETGLOBAL rT,Kx; GETTABLE dest,rT,Ky`. Loading `dest` straight from the
+    // global and indexing `dest` in place drops the extra instruction, so the
+    // pair becomes `GETGLOBAL dest,Kx; GETTABLE dest,dest,Ky`. Only safe when
+    // the table slot cannot alias the destination (see isStableRead).
+    const local = e.table.type === 'name' ? this.findLocal(e.table.name) : -2;
+    if (e.table.type === 'name' && local < 0 && this.isStableRead(e.key) &&
+        !(e.table.type === 'name' && this.findUpval(e.table.name) >= 0)) {
+      this.emit(OpCode.GETGLOBAL, dest, this.kst(e.table.name), 0);
+      const k = this.exprRK(e.key);
+      this.emit(OpCode.GETTABLE, dest, dest, k);
+      this.freeTo(dest + 1);
+      return;
+    }
     let t;
     if (e.table.type === 'name' && this.isStableRead(e.key)) {
-      const local = this.findLocal(e.table.name);
       t = local >= 0 ? local : this.exprToReg(e.table);
     } else {
       t = this.exprToReg(e.table);
@@ -782,13 +872,18 @@ class Compiler {
       const batch = arr.slice(i, i + FPF);
       const base = dest + 1;
       this.fs.freereg = base;
+      const last = batch[batch.length - 1];
+      // The final array item of a table constructor expands to all of its
+      // results, so it must be compiled with an open result count.
+      const spreadLast = i + batch.length === arr.length && last &&
+        (last.type === 'call' || last.type === 'vararg');
       for (let j = 0; j < batch.length; j++) {
-        this.exprToRegDest(batch[j], base + j, 1);
+        const want = spreadLast && j === batch.length - 1 ? -1 : 1;
+        this.exprToRegDest(batch[j], base + j, want);
         this.fs.freereg = base + j + 1;
       }
-      const last = batch[batch.length - 1];
       let b = batch.length;
-      if (i + batch.length === arr.length && last && (last.type === 'call' || last.type === 'vararg')) b = 0;
+      if (spreadLast) b = 0;
       this.emit(OpCode.SETLIST, dest, b, (i / FPF) + 1);
       this.freeTo(dest + 1);
     }

@@ -66,7 +66,11 @@ function writeConstants(w, proto, ctx) {
     } else if (typeof c === 'string') {
       w.u8(ctx.constTypes.string);
       const enc = encodeConstant(c, ctx.constantKey);
-      w.i32(enc.length);
+      // Compact string lengths: Redz's 9,322 strings are all <=78 bytes, so
+      // two bytes save 18,644 payload bytes over an unconditional i32 prefix.
+      // Reserve 0xffff as an escape, retaining full support for large literals.
+      if (enc.length < 0xffff) w.u16(enc.length);
+      else { w.u16(0xffff); w.i32(enc.length); }
       w.bytes(enc);
     } else {
       w.u8(ctx.constTypes.nil);
@@ -132,7 +136,8 @@ function writeInstructions(w, proto, ctx) {
       B = A + B - 2;
     }
 
-    const desc = (type << 1) | (mask << 3);
+    const compact = type === 1 && B >= -32768 && B <= 32767;
+    const desc = (type << 1) | (mask << 3) | (compact ? 64 : 0);
     w.u8(desc);
     const opnum = (ctx.varMap && ins.variant && ctx.varMap[ins.variant] !== undefined)
       ? ctx.varMap[ins.variant]
@@ -140,7 +145,13 @@ function writeInstructions(w, proto, ctx) {
     w.i16(opnum);
     w.i16(A);
 
-    if (type === 0) {
+    if (type === 1 && compact) {
+      // Compact ABx: a 16-bit operand replaces the i32. The descriptor has six
+      // used bits, so bit 7 flags the form; the operand itself is the same
+      // value, just two bytes wide. Constants in a single proto never exceed
+      // 16 bits in practice, so this halves the cost of every constant load.
+      w.i16(B);
+    } else if (type === 0) {
       w.i16(B);
       w.i16(C);
     } else if (type === 1) {
@@ -234,7 +245,8 @@ function readConstants(r, ctx) {
     if (kind === 'boolean') out.push(r.u8() !== 0);
     else if (kind === 'number') out.push(r.f64());
     else if (kind === 'string') {
-      const len = r.i32();
+      let len = r.u16();
+      if (len === 0xffff) len = r.i32();
       const bytes = r.bytes(len);
       out.push(decodeConstant(ctx.constantKey, bytes));
     } else {
@@ -255,6 +267,7 @@ function readInstructions(r, fn, ctx) {
     if (getBits(desc, 1, 1) !== 0) continue;
     const type = getBits(desc, 2, 3);
     const mask = getBits(desc, 4, 6);
+    const compact = (desc & 64) === 64;
     const inst = {
       opnum: r.i16(),
       a: r.i16(),
@@ -269,7 +282,7 @@ function readInstructions(r, fn, ctx) {
       inst.b = r.i16();
       inst.c = r.i16();
     } else if (type === 1) {
-      inst.b = r.i32();
+      inst.b = compact ? r.i16() : r.i32();
     } else if (type === 2) {
       inst.b = r.i32() - 65536;
     } else if (type === 3) {

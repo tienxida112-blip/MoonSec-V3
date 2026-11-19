@@ -8,8 +8,7 @@
   },
   "scripts": {
     "obfuscate": "node bin/moonsec.js",
-    "samples": "node scripts/generate-samples.js",
-    "test": "node scripts/selftest.js"
+    "test": "node Tests/selftest.js"
   },
   "engines": {
     "node": ">=18"

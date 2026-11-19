@@ -50,11 +50,17 @@ function randomIdent(rng, opts = {}) {
   return s;
 }
 
-function uniqueNames(rng, count, reserved = new Set()) {
+function uniqueNames(rng, count, reserved = new Set(), opts = {}) {
   const out = [];
   const used = new Set(reserved);
+  const min = opts.min ?? 1;
+  const max = opts.max ?? 2;
+  const alpha = opts.alpha || null;
   while (out.length < count) {
-    const n = randomIdent(rng, { min: 3, max: 5 });
+    // MoonSec V3 names almost every VM local with one character; long names are
+    // a fingerprint tell. Keep the occasional 2-char name for local variety.
+    let n = randomIdent(rng, { min, max });
+    if (alpha && rng.int(6) === 0) n = rng.pick(alpha);
     if (!used.has(n)) {
       used.add(n);
       out.push(n);
@@ -164,10 +170,46 @@ function luaLongString(str) {
   return `[${e}[${str}]${e}]`;
 }
 
+
+// Handler templates carry readable temporary names (_273, _184, ...). Rename
+// them to short region-scoped locals before emission: the reference build reuses
+// one-letter names constantly, and long unique temporaries show up as a diff.
+function shortenTemporaries(code, rng, reserved) {
+  const seen = [];
+  const map = new Map();
+  for (const m of code.matchAll(/_(\d{1,4})\b/g)) {
+    if (!map.has(m[1])) map.set(m[1], null);
+  }
+  const pool = [];
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  for (const a of letters) {
+    pool.push(a);
+    for (const b of letters) if (pool.length < 200) pool.push(a + b);
+  }
+  const taken = new Set(reserved);
+  for (const kw of ['and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for',
+                    'function', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat',
+                    'return', 'then', 'true', 'until', 'while']) taken.add(kw);
+  let idx = 0;
+  for (const key of map.keys()) {
+    let name;
+    do {
+      // bias to single characters, with occasional two-letter reuse
+      name = rng.int(4) === 0 ? pool[rng.range(26, Math.min(pool.length, 120))] : pool[idx++ % 26];
+      if (idx > 26 * 3) idx = 0;
+    } while (taken.has(name));
+    taken.add(name);
+    map.set(key, name);
+    seen.push(name);
+  }
+  return code.replace(/_(\d{1,4})\b/g, (all, n) => map.get(n) || all);
+}
+
 module.exports = {
   RNG,
   randomIdent,
   uniqueNames,
+  shortenTemporaries,
   ByteWriter,
   ByteReader,
   getBits,

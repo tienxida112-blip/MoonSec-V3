@@ -46,6 +46,12 @@ function optimizeProto(root) {
     if (!n) return false;
 
     const maxReg = Math.max(2, proto.maxStack || 2);
+    // Registers captured as upvalues are reachable from a closure for the rest
+    // of the enclosing scope, so a write to one is never dead: the closure may
+    // read it after the write. Without this, `local a,b; function F() return
+    // b end; b = 5; print(F())` lost the `b = 5` store.
+    const captured = new Set();
+    for (const x of ins) if (x.upval && (x.a | 0) === 0) captured.add(x.b | 0);
     const uses = Array.from({ length: n }, () => new Set());
     const defs = Array.from({ length: n }, () => new Set());
     const successors = Array.from({ length: n }, () => []);
@@ -190,7 +196,7 @@ function optimizeProto(root) {
       // LOADBOOL with C=1 is also a skip-next branch, so it is not a pure write.
       if (x.op === O.LOADBOOL && (x.c | 0) !== 0) continue;
       const writes = defs[i];
-      if (writes.size && [...writes].every(r => !liveOut[i].has(r))) remove.add(i);
+      if (writes.size && [...writes].every(r => !liveOut[i].has(r) && !captured.has(r))) remove.add(i);
     }
     if (!remove.size) return false;
     compact(proto, remove);

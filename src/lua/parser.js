@@ -465,7 +465,10 @@ class Parser {
     if (this.match('(')) {
       const e = this.expr();
       this.eat(')');
-      return e;
+      // Parentheses truncate a multi-value expression to exactly one value, so
+      // keep the node shaped as non-expandable (it used to be returned raw,
+      // which let `print((f()))` expand all of f's results).
+      return { type: 'paren', expr: e };
     }
     throw new ParseError('expected expression', this.cur());
   }
