@@ -113,6 +113,9 @@ function optimizeProto(root) {
           // A and A+3 are only written on the loop-taken path.
           addRange(u, a, a + 3);
           break;
+        case O.ITERPREP:
+          addRange(u, a, a + 2); addRange(d, a, a + 2);
+          break;
         case O.TFORLOOP:
           // Iterator result registers are conditional writes.
           addRange(u, a, a + 2 + c);

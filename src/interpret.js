@@ -338,11 +338,17 @@ function runProto(proto, env, args, upvals) {
         stk[a] = Number(stk[a]) - Number(stk[a + 2]);
         pc += b;
         break;
+      case OpCode.ITERPREP: {
+        if (stk[a] && typeof stk[a] === 'object') {
+          stk[a + 1] = stk[a]; stk[a] = env.next; stk[a + 2] = null;
+        }
+        break;
+      }
       case OpCode.TFORLOOP: {
         const gen = stk[a];
         const res = flatten(callFn(gen, [stk[a + 1], stk[a + 2]], env));
         for (let i = 0; i < c; i++) stk[a + 3 + i] = i < res.length ? res[i] : null;
-        if (isTruthy(stk[a + 3])) {
+        if (stk[a + 3] !== null && stk[a + 3] !== undefined) {
           stk[a + 2] = stk[a + 3];
         } else pc++;
         break;

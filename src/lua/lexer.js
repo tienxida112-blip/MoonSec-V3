@@ -91,40 +91,49 @@ class Lexer {
 
   readString(q) {
     this.adv();
-    let s = '';
+    let s = '', text = '';
+    const chunks = [];
+    const append = value => { s += value; text += value; };
+    const flush = () => { if (text) { chunks.push(Buffer.from(text, 'utf8')); text = ''; } };
+    const byte = value => {
+      if (value < 128) append(String.fromCharCode(value));
+      else { flush(); chunks.push(Buffer.from([value])); s += String.fromCharCode(value); }
+    };
     while (this.peek() && this.peek() !== q) {
       if (this.peek() === '\\') {
         this.adv();
         const c = this.adv();
         const map = { n: '\n', r: '\r', t: '\t', a: '\x07', b: '\b', f: '\f', v: '\v', '\\': '\\', '"': '"', "'": "'", '\n': '\n' };
-        if (map[c] !== undefined) s += map[c];
+        if (map[c] !== undefined) append(map[c]);
         else if (c === 'u' && this.peek() === '{') {
           this.adv();
           let h = '';
           while (/[0-9a-fA-F]/.test(this.peek())) h += this.adv();
-          if (this.peek() === '}') this.adv();
-          const cp = parseInt(h, 16) || 0;
-          s += cp <= 0xffff
-            ? String.fromCharCode(cp)
-            : String.fromCharCode(0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 0x3ff));
+          if (this.peek() !== '}' || !h || parseInt(h, 16) > 0x10ffff) throw new LexerError('invalid Unicode escape', this.line, this.col);
+          this.adv();
+          append(String.fromCodePoint(parseInt(h, 16)));
         } else if (c === 'x' && /[0-9a-fA-F]/.test(this.peek())) {
           let h = '';
           while (/[0-9a-fA-F]/.test(this.peek()) && h.length < 2) h += this.adv();
-          s += String.fromCharCode(parseInt(h, 16));
+          byte(parseInt(h, 16));
         } else if (/\d/.test(c)) {
           let n = c;
           while (/\d/.test(this.peek()) && n.length < 3) n += this.adv();
-          s += String.fromCharCode(parseInt(n, 10) % 256);
+          byte(parseInt(n, 10) % 256);
         } else if (c === 'z') {
           while (/[ \t\r\n]/.test(this.peek())) this.adv();
-        } else s += c;
+        } else append(c);
       } else {
         if (this.peek() === '\n') throw new LexerError('unfinished string', this.line, this.col);
-        s += this.adv();
+        append(this.adv());
       }
     }
     if (this.peek() !== q) throw new LexerError('unfinished string', this.line, this.col);
-    this.adv();
+    this.adv();flush();
+    // A Lua byte escape is not a Unicode character: "\\128" is one byte,
+    // whereas a literal U+0080 in a UTF-8 source file occupies two. Keep both
+    // the ordinary token value and the original bytes for the serializer.
+    this.stringBytes = Buffer.concat(chunks);
     return s;
   }
 
@@ -234,7 +243,10 @@ class Lexer {
       if (s !== null) return this.tok('string', s, line, col);
     }
 
-    if (c === '"' || c === "'") return this.tok('string', this.readString(c), line, col);
+    if (c === '"' || c === "'") {
+      const value = this.readString(c);
+      return { ...this.tok('string', value, line, col), bytes: this.stringBytes };
+    }
     if (c === '`') return this.tok('interpolated', this.readInterpolated(), line, col);
     if (/\d/.test(c) || (c === '.' && /\d/.test(this.peek(1)))) return this.tok('number', this.readNumber(), line, col);
 

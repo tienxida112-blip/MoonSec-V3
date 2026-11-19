@@ -1,14 +1,15 @@
 {
   "name": "moonsec-v3",
-  "version": "3.0.0",
-  "description": "MoonSec V3 reconstruction — Node.js Lua/Roblox VM obfuscator",
+  "version": "3.1.0",
+  "description": "MoonSec V3 plain-profile bytecode and VM reconstruction",
   "main": "src/obfuscate.js",
   "bin": {
     "moonsec": "bin/moonsec.js"
   },
   "scripts": {
     "obfuscate": "node bin/moonsec.js",
-    "test": "node Tests/selftest.js"
+    "test": "node Tests/selftest.js",
+    "test:reference": "node Tests/reference-interop.js"
   },
   "engines": {
     "node": ">=18"

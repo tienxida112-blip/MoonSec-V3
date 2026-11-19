@@ -399,7 +399,10 @@ class Parser {
     if (this.match('true')) return { type: 'literal', value: true };
     if (this.match('false')) return { type: 'literal', value: false };
     if (this.at('number')) return { type: 'literal', value: this.eat('number').value };
-    if (this.at('string')) return { type: 'literal', value: this.eat('string').value };
+    if (this.at('string')) {
+      const token = this.eat('string');
+      return { type: 'literal', value: token.value, bytes: token.bytes };
+    }
     if (this.at('interpolated')) return this.interpolToExpr(this.eat('interpolated').value);
     if (this.at('if')) return this.exprIf();
     if (this.match('...')) return { type: 'vararg' };
@@ -480,7 +483,10 @@ class Parser {
       this.eat(')');
       return a;
     }
-    if (this.at('string')) return [{ type: 'literal', value: this.eat('string').value }];
+    if (this.at('string')) {
+      const token = this.eat('string');
+      return [{ type: 'literal', value: token.value, bytes: token.bytes }];
+    }
     if (this.match('{')) return [this.table()];
     throw new ParseError('expected function arguments', this.cur());
   }

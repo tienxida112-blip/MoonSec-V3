@@ -1,28 +1,11 @@
 'use strict';
 
-// The payload must not contain the two characters that spell a hex literal
-// (`0x`): the reference's 1 MB payload has no `0x` anywhere, while a base-16
-// alphabet containing both `0` and `x` sprinkled them through our blob and
-// doubled the hex-literal count of the whole file. Keep `x` in the pool but
-// never together with `0`.
-const ALPHABET_POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789_$#@!%^&*+-~<>?';
-const HEX_FREE_POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789_$#@!%^&*+-~<>?';
+// Sixteen distinct printable symbols, carried as the payload prefix. The Lua
+// string writer quotes this alphabet; the codec is independent of token counts.
+const ALPHABET_POOL = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_!#$%&*+-/<=>?@^~()[]{}:;,. ';
 
 function makeAlphabet(rng) {
-  const chars = [];
-  const used = new Set();
-  while (chars.length < 16) {
-    // Skip `x`/`X` while a zero-like digit is still in play: `0x` must never be
-    // spellable by the alphabet.
-    const pool = used.has('0') ? HEX_FREE_POOL : ALPHABET_POOL;
-    let c = pool[rng.int(pool.length)];
-    if (c === 'x' || c === 'X') continue;
-    if (!used.has(c)) {
-      used.add(c);
-      chars.push(c);
-    }
-  }
-  return chars.join('');
+  return rng.shuffle(ALPHABET_POOL.split('')).slice(0, 16).join('');
 }
 
 function encodeBytes(buf, key, alphabet) {
@@ -56,27 +39,27 @@ function decodeBytes(data, key) {
   return Buffer.from(out);
 }
 
-// The per-string key header is a single byte, and the reader only needs to know
-// whether a key was applied at all -- so the whole encoded stream shares one
-// key value. The writer stamps it once at the head of the blob instead of
-// prefixing every string, which is 1 byte on each of ~9,300 constants.
-function encodeConstant(str, key) {
-  const raw = Buffer.from(str, 'utf8');
-  if (!key) return raw;
-  const out = Buffer.alloc(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    out[i] = ((raw[i] - key) % 256 + 256) % 256;
-  }
+// The observed corpus profile stores constants verbatim. A separate MoonSec
+// profile uses a leading high-bit marker and shifts the following bytes. Never
+// shift an unmarked string, and never mistake raw UTF-8 for that profile.
+function encodeConstant(str, key = 0) {
+  const raw = Buffer.isBuffer(str) ? str : Buffer.from(str, 'utf8');
+  if (!key || !raw.length) return raw;
+  const out = Buffer.alloc(raw.length + 1);
+  out[0] = 0x80;
+  for (let i = 0; i < raw.length; i++) out[i + 1] = (raw[i] - key + 256) % 256;
+  return out;
+}
+
+function decodeConstantBytes(key, bytes) {
+  if (!key || bytes.length < 2 || bytes[0] < 128) return Buffer.from(bytes);
+  const out = Buffer.alloc(bytes.length - 1);
+  for (let i = 1; i < bytes.length; i++) out[i - 1] = (bytes[i] + key) % 256;
   return out;
 }
 
 function decodeConstant(key, bytes) {
-  if (!key) return Buffer.from(bytes).toString('utf8');
-  const out = Buffer.alloc(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    out[i] = (bytes[i] + key) % 256;
-  }
-  return out.toString('utf8');
+  return decodeConstantBytes(key, bytes).toString('utf8');
 }
 
 module.exports = {
@@ -85,4 +68,5 @@ module.exports = {
   decodeBytes,
   encodeConstant,
   decodeConstant,
+  decodeConstantBytes,
 };

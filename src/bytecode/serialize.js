@@ -1,34 +1,30 @@
-'use strict';
+"use strict";
 
-const { OpCode, getOpType, OpType, RKASK } = require('./opcodes');
-const { ByteWriter, ByteReader, getBits } = require('../util');
-const { encodeConstant, decodeConstant } = require('../encode');
+const { getOpType, OpType } = require('./opcodes');
+const { ByteWriter, ByteReader } = require('../util');
+const { encodeConstant, decodeConstantBytes } = require('../encode');
+const { lowerInstruction, instructionForm } = require('./lower');
 
 const PROTO_STEPS = ['instructions', 'constants', 'functions', 'numparams'];
 
-function instTypeCode(op, inst) {
-  // The VM stores CLOSURE's child-proto index in B and its captured-upvalue
-  // descriptor count in C, so encode it as ABC instead of Lua's native ABx.
-  if (op === OpCode.CLOSURE) return 0;
-  const t = getOpType(op);
-  if (t === OpType.ABx) return 1;
-  if (t === OpType.sBx) return 2;
-  if (t === OpType.AsBx) return 3;
-  return 0;
+function validateContext(ctx) {
+  if (!Array.isArray(ctx.protoFormat) || ctx.protoFormat.length !== 4 ||
+      new Set(ctx.protoFormat).size !== 4 || ctx.protoFormat[0] !== 'constants' ||
+      ctx.protoFormat.some(s => !PROTO_STEPS.includes(s))) {
+    throw new Error('MoonSec prototype layout must start with constants and contain each of the four sections once');
+  }
+  const types = ['boolean', 'number', 'string', 'nil'].map(k => ctx.constTypes[k]);
+  if (new Set(types).size !== 4 || types.some(n => !Number.isInteger(n) || n < 0 || n > 255)) {
+    throw new Error('invalid constant type tags');
+  }
 }
 
-function isRK(op) {
-  const s = String(op || '');
-  const base = s.replace(/KK$|KR$|RK$|RR$|K$/, '');
-  return (
-    base === OpCode.ADD || base === OpCode.SUB || base === OpCode.MUL ||
-    base === OpCode.DIV || base === OpCode.MOD || base === OpCode.POW ||
-    base === OpCode.GETTABLE || base === OpCode.SETTABLE || base === OpCode.SELF ||
-    base === OpCode.EQ || base === OpCode.LT || base === OpCode.LE
-  );
+function instTypeCode(op, inst = {}) {
+  return instructionForm({ ...inst, op });
 }
 
 function serializeProto(proto, ctx) {
+  validateContext(ctx);
   const w = new ByteWriter();
   writeFunction(w, proto, ctx);
   return w.toBuffer();
@@ -38,269 +34,109 @@ function writeFunction(w, proto, ctx) {
   for (const step of ctx.protoFormat) {
     switch (step) {
       case 'constants':
-        writeConstants(w, proto, ctx);
+        w.i32(proto.constants.length);
+        for (let i = 0; i < proto.constants.length; i++) {
+          const c = proto.constants[i];
+          if (typeof c === 'boolean') { w.u8(ctx.constTypes.boolean); w.u8(c ? 1 : 0); }
+          else if (typeof c === 'number') { w.u8(ctx.constTypes.number); w.f64(c); }
+          else if (typeof c === 'string') {
+            w.u8(ctx.constTypes.string);
+            const bytes = encodeConstant((proto.constantBytes && proto.constantBytes[i]) || c, ctx.constantKey);
+            w.i32(bytes.length);
+            w.bytes(bytes);
+          } else w.u8(ctx.constTypes.nil);
+        }
         break;
-      case 'instructions':
-        writeInstructions(w, proto, ctx);
-        break;
+      case 'instructions': writeInstructions(w, proto, ctx); break;
       case 'numparams':
+        if (!Number.isInteger(proto.numParams || 0) || proto.numParams < 0 || proto.numParams > 255) throw new Error('too many parameters');
         w.u8(proto.numParams || 0);
         break;
       case 'functions':
         w.i32(proto.functions.length);
-        for (const f of proto.functions) writeFunction(w, f, ctx);
+        proto.functions.forEach(child => writeFunction(w, child, ctx));
         break;
     }
   }
 }
 
-function writeConstants(w, proto, ctx) {
-  w.i32(proto.constants.length);
-  for (const c of proto.constants) {
-    if (typeof c === 'boolean') {
-      w.u8(ctx.constTypes.boolean);
-      w.u8(c ? 1 : 0);
-    } else if (typeof c === 'number') {
-      w.u8(ctx.constTypes.number);
-      w.f64(c);
-    } else if (typeof c === 'string') {
-      w.u8(ctx.constTypes.string);
-      const enc = encodeConstant(c, ctx.constantKey);
-      // Compact string lengths: Redz's 9,322 strings are all <=78 bytes, so
-      // two bytes save 18,644 payload bytes over an unconditional i32 prefix.
-      // Reserve 0xffff as an escape, retaining full support for large literals.
-      if (enc.length < 0xffff) w.u16(enc.length);
-      else { w.u16(0xffff); w.i32(enc.length); }
-      w.bytes(enc);
-    } else {
-      w.u8(ctx.constTypes.nil);
-    }
-  }
+function word(w, value, label) {
+  if (!Number.isInteger(value) || value < 0 || value > 65535) throw new Error(label + ' is outside the MoonSec u16 range: ' + value);
+  w.u16(value);
 }
 
 function writeInstructions(w, proto, ctx) {
-  const map = ctx.opMap;
-  // Preserve CLOSURE's following MOVE/GETUPVAL capture descriptors. The VM
-  // advances over these records inside its CLOSURE handler.
-  const insts = proto.instructions;
-  w.i32(insts.length);
-  for (let i = 0; i < insts.length; i++) {
-    const ins = insts[i];
-    const type = instTypeCode(ins.op, ins);
-    let mask = 0;
-    let A = ins.a | 0;
-    let B = ins.b | 0;
-    let C = ins.c | 0;
-
-    if (ins.fusedCmp) {
-      if (A >= RKASK) {
-        mask |= 0b001;
-        A = (A - RKASK) + 1;
-      }
-      if (C >= RKASK) {
-        mask |= 0b100;
-        C = (C - RKASK) + 1;
-      }
+  w.i32(proto.instructions.length);
+  for (const ins of proto.instructions) {
+    const { form, mask, a, b, c } = lowerInstruction(ins);
+    w.u8((form << 1) | (mask << 3));
+    const name = ins.opcodeVariant || ins.dispatchVariant || ins.variant || ins.op;
+    const number = (ctx.varMap || ctx.opMap || {})[name];
+    word(w, number, 'opcode ' + name);
+    word(w, a, name + ' A');
+    if (form === 0) {
+      word(w, b, name + ' B');
+      word(w, c, name + ' C');
     } else {
-      if (ins.op === OpCode.LOADK || ins.op === OpCode.GETGLOBAL || ins.op === OpCode.SETGLOBAL) {
-        mask |= 0b010;
-        B = B + 1;
-      }
-      if (isRK(ins.op)) {
-        if (B >= RKASK) {
-          mask |= 0b010;
-          B = (B - RKASK) + 1;
-        }
-        if (C >= RKASK) {
-          mask |= 0b100;
-          C = (C - RKASK) + 1;
-        }
-      }
-    }
-
-    const v = ins.variant || ins.op;
-    if (v === 'CALL' || v === 'CALLN0' || v === 'CALLNV') {
-      B = A + B - 1;
-    } else if (v === 'CALLNM') {
-      B = A + B - 1;
-      C = A + C - 2;
-    } else if (v === 'CALL0M' || v === 'CALL1M' || v === 'CALLVM') {
-      C = A + C - 2;
-    } else if (v === 'SETLIST') {
-      B = A + B;
-    } else if (v === 'RETURN') {
-      B = B - 2;
-    } else if (v === 'TAILCALL') {
-      B = A + B - 1;
-    } else if (v === 'VARARG') {
-      B = A + B - 2;
-    }
-
-    const compact = type === 1 && B >= -32768 && B <= 32767;
-    const desc = (type << 1) | (mask << 3) | (compact ? 64 : 0);
-    w.u8(desc);
-    const opnum = (ctx.varMap && ins.variant && ctx.varMap[ins.variant] !== undefined)
-      ? ctx.varMap[ins.variant]
-      : map[ins.op];
-    w.i16(opnum);
-    w.i16(A);
-
-    if (type === 1 && compact) {
-      // Compact ABx: a 16-bit operand replaces the i32. The descriptor has six
-      // used bits, so bit 7 flags the form; the operand itself is the same
-      // value, just two bytes wide. Constants in a single proto never exceed
-      // 16 bits in practice, so this halves the cost of every constant load.
-      w.i16(B);
-    } else if (type === 0) {
-      w.i16(B);
-      w.i16(C);
-    } else if (type === 1) {
-      w.i32(B);
-    } else if (type === 2) {
-      const abs = (ins.pc + 1) + B;
-      w.i32(abs + 65536);
-    } else if (type === 3) {
-      // C# ForPrep fix is B -= PC+2 (IB2 skip target is one past FORLOOP).
-      let abs = (ins.pc + 1) + B;
-      if (ins.op === OpCode.FORPREP) abs += 1;
-      w.i32(abs + 65536);
-      w.i16(C);
+      const stored = b + (form >= 2 ? 65536 : 0);
+      if (!Number.isInteger(stored) || stored < 0 || stored > 0xffffffff) throw new Error(name + ' B is outside the MoonSec u32 range');
+      w.u32(stored);
+      if (form === 3) word(w, c, name + ' C');
     }
   }
 }
 
-function readHeader(r, ctx) {
-  if (r.remaining() < 4) return;
-  const mag = r.bytes(4);
-  if (mag.toString('ascii') !== 'MSV3') {
-    r.pos -= 4;
-    return;
-  }
-  const names = ['instructions', 'constants', 'functions', 'numparams'];
-  ctx.protoFormat = [r.u8(), r.u8(), r.u8(), r.u8()].map(i => names[i]);
-  ctx.constTypes = { boolean: r.u8(), number: r.u8(), string: r.u8(), nil: r.u8() };
-  ctx.opSlots = { enum: r.u8(), A: r.u8(), B: r.u8(), C: r.u8() };
-  ctx.bytecodeKey = r.u8();
-  ctx.constantKey = r.u8();
-  const n = r.i32();
-  ctx.varMap = ctx.varMap || Object.create(null);
-  ctx.opRev = ctx.opRev || Object.create(null);
-  for (let i = 0; i < n; i++) {
-    const len = r.u8();
-    const name = r.bytes(len).toString('utf8');
-    const num = r.i16();
-    ctx.varMap[name] = num;
-    ctx.opRev[num] = name;
-  }
-}
-
+// Return raw VM operands, not reconstructed Lua 5.1 instructions. Constant
+// masks describe which integer fields the Lua reader replaces with K[index].
+// Keep the original bytes alongside JS strings so binary Lua strings survive.
 function deserializeProto(buf, ctx) {
+  validateContext(ctx);
   const r = new ByteReader(buf);
-  readHeader(r, ctx);
-  return readFunction(r, ctx);
-}
-
-function readFunction(r, ctx) {
-  const fn = {
-    instructions: [],
-    constants: [],
-    functions: [],
-    numParams: 0,
-    upvalues: [],
-    maxStack: 2,
-    isVararg: true,
-  };
-  for (const step of ctx.protoFormat) {
-    switch (step) {
-      case 'constants':
-        fn.constants = readConstants(r, ctx);
-        break;
-      case 'instructions':
-        fn.instructions = readInstructions(r, fn, ctx);
-        break;
-      case 'numparams':
-        fn.numParams = r.u8();
-        break;
-      case 'functions': {
-        const n = r.i32();
-        if (n < 0 || n > 100000) throw new Error('bad proto count ' + n);
-        fn.functions = [];
-        for (let i = 0; i < n; i++) fn.functions.push(readFunction(r, ctx));
-        break;
+  const rev = ctx.opRev || Object.fromEntries(Object.entries(ctx.varMap || ctx.opMap || {}).map(([k, v]) => [v, k]));
+  function count(label, max) {
+    const n = r.i32();
+    if (n < 0 || n > max) throw new Error('bad ' + label + ' count ' + n);
+    return n;
+  }
+  function readFunction(depth = 0) {
+    if (depth > 200) throw new Error('prototype nesting limit exceeded');
+    const fn = { instructions: [], constants: [], constantBytes: [], functions: [], numParams: 0 };
+    for (const step of ctx.protoFormat) {
+      if (step === 'constants') {
+        const n = count('constant', 1000000);
+        for (let i = 0; i < n; i++) {
+          const flag = r.u8();
+          if (flag === ctx.constTypes.boolean) fn.constants.push(r.u8() !== 0);
+          else if (flag === ctx.constTypes.number) fn.constants.push(r.f64());
+          else if (flag === ctx.constTypes.string) {
+            const len = count('string byte', r.remaining());
+            const bytes = decodeConstantBytes(ctx.constantKey, r.bytes(len));
+            fn.constants.push(bytes.toString('utf8'));
+            fn.constantBytes[i] = bytes;
+          } else fn.constants.push(null);
+        }
+      } else if (step === 'numparams') fn.numParams = r.u8();
+      else if (step === 'functions') {
+        for (let i = 0, n = count('prototype', 100000); i < n; i++) fn.functions.push(readFunction(depth + 1));
+      } else if (step === 'instructions') {
+        for (let i = 0, n = count('instruction', 1000000); i < n; i++) {
+          const descriptor = r.u8();
+          if (descriptor & 1) { fn.instructions.push(null); continue; }
+          const form = (descriptor >> 1) & 3, mask = (descriptor >> 3) & 7;
+          const opnum = r.u16(), a = r.u16();
+          let b, c = 0;
+          if (form === 0) { b = r.u16(); c = r.u16(); }
+          else { b = r.u32() - (form >= 2 ? 65536 : 0); if (form === 3) c = r.u16(); }
+          fn.instructions.push({ opnum, op: rev[opnum] || 'UNKNOWN', a, b, c, pc: i, form, mask,
+            isKA: !!(mask & 1), isKB: !!(mask & 2), isKC: !!(mask & 4) });
+        }
       }
     }
+    return fn;
   }
+  const fn = readFunction();
+  if (r.remaining() !== 0) throw new Error('trailing bytes after MoonSec prototype');
   return fn;
-}
-
-function readConstants(r, ctx) {
-  const n = r.i32();
-  if (n < 0 || n > 1000000) throw new Error('bad constant count ' + n);
-  const out = [];
-  const rev = {};
-  for (const [k, v] of Object.entries(ctx.constTypes)) rev[v] = k;
-  for (let i = 0; i < n; i++) {
-    const flag = r.u8();
-    const kind = rev[flag];
-    if (kind === 'boolean') out.push(r.u8() !== 0);
-    else if (kind === 'number') out.push(r.f64());
-    else if (kind === 'string') {
-      let len = r.u16();
-      if (len === 0xffff) len = r.i32();
-      const bytes = r.bytes(len);
-      out.push(decodeConstant(ctx.constantKey, bytes));
-    } else {
-      out.push(null);
-    }
-  }
-  return out;
-}
-
-function readInstructions(r, fn, ctx) {
-  const n = r.i32();
-  if (n < 0 || n > 1000000) throw new Error('bad instruction count ' + n);
-  const out = [];
-  const rev = ctx.opRev;
-  let pc = 0;
-  for (let i = 0; i < n; i++) {
-    const desc = r.u8();
-    if (getBits(desc, 1, 1) !== 0) continue;
-    const type = getBits(desc, 2, 3);
-    const mask = getBits(desc, 4, 6);
-    const compact = (desc & 64) === 64;
-    const inst = {
-      opnum: r.i16(),
-      a: r.i16(),
-      b: 0,
-      c: 0,
-      pc,
-      isKA: getBits(mask, 1, 1) === 1,
-      isKB: getBits(mask, 2, 2) === 1,
-      isKC: getBits(mask, 3, 3) === 1,
-    };
-    if (type === 0) {
-      inst.b = r.i16();
-      inst.c = r.i16();
-    } else if (type === 1) {
-      inst.b = compact ? r.i16() : r.i32();
-    } else if (type === 2) {
-      inst.b = r.i32() - 65536;
-    } else if (type === 3) {
-      inst.b = r.i32() - 65536;
-      inst.c = r.i16();
-    }
-    inst.op = rev[inst.opnum] || 'UNKNOWN';
-    if ((inst.op === OpCode.LOADK || inst.op === OpCode.GETGLOBAL || inst.op === OpCode.SETGLOBAL) && inst.isKB) {
-      inst.b = inst.b - 1;
-    }
-    if (isRK(inst.op)) {
-      if (inst.isKB) inst.b = RKASK + (inst.b - 1);
-      if (inst.isKC) inst.c = RKASK + (inst.c - 1);
-    }
-    out.push(inst);
-    pc++;
-  }
-  return out;
 }
 
 function lua51Serialize(proto) {
@@ -323,10 +159,11 @@ function writeLua51Function(w, f) {
     w.u32(pack51(ins));
   }
   w.i32(f.constants.length);
-  for (const c of f.constants) {
+  for (let i = 0; i < f.constants.length; i++) {
+    const c = f.constants[i];
     if (typeof c === 'string') {
       w.u8(4);
-      const b = Buffer.from(c, 'utf8');
+      const b = (f.constantBytes && f.constantBytes[i]) || Buffer.from(c, 'utf8');
       w.bytes(Buffer.concat([u64(b.length + 1), b, Buffer.from([0])]));
     } else if (typeof c === 'number') {
       w.u8(3); w.f64(c);

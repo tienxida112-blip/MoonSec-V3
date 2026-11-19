@@ -14,6 +14,7 @@ class Proto {
     this.parent = parent;
     this.instructions = [];
     this.constants = [];
+    this.constantBytes = [];
     this.constMap = new Map();
     this.functions = [];
     this.locals = [];
@@ -85,20 +86,21 @@ class Compiler {
     return inst;
   }
 
-  kst(value) {
+  kst(value, bytes) {
     const proto = this.fs.proto;
     if (typeof value === 'number' && !Number.isFinite(value)) {
       value = value < 0 ? -1.7976931348623157e+308 : 1.7976931348623157e+308;
     }
     let key;
     if (value === null) key = 'nil';
-    else if (typeof value === 'string') key = 's:' + value;
+    else if (typeof value === 'string') key = 's:' + (bytes || Buffer.from(value, 'utf8')).toString('hex');
     else if (typeof value === 'number') key = Object.is(value, -0) ? 'n:-0' : 'n:' + value;
     else if (typeof value === 'boolean') key = 'b:' + value;
     else key = 'u:' + String(value);
     if (proto.constMap.has(key)) return proto.constMap.get(key);
     const idx = proto.constants.length;
     proto.constants.push(value);
+    if (typeof value === 'string') proto.constantBytes[idx] = bytes || Buffer.from(value, 'utf8');
     proto.constMap.set(key, idx);
     return idx;
   }
@@ -338,7 +340,8 @@ class Compiler {
   }
 
   statCall(e) {
-    this.exprToNext(e, 1);
+    // A statement discards all results (CALL C=1), unlike a value expression.
+    this.exprToNext(e, 0);
     this.fs.freereg = this.fs.nactvar;
   }
 
@@ -439,6 +442,9 @@ class Compiler {
     this.newLocal('(for state)');
     this.newLocal('(for control)');
     for (const name of s.names) this.newLocal(name);
+    // Luau permits a table or __iter object as well as an iterator triple.
+    // Prepare it once, before the loop, not again on every TFORLOOP step.
+    this.emit(OpCode.ITERPREP, base, 0, 0);
     const jmp = this.emit(OpCode.JMP, 0, 0, 0);
     this.fs.breaks.push([]);
     this.fs.continues.push([]);
@@ -630,7 +636,7 @@ class Compiler {
         const r = this.exprToReg(e);
         return r;
       }
-      const k = this.kst(e.value);
+      const k = this.kst(e.value, e.bytes);
       if (k < RKASK) return RKASK + k;
     }
     return this.exprToReg(e);
@@ -658,7 +664,7 @@ class Compiler {
         this.exprToRegDest(e.expr, dest, 1);
         break;
       case 'literal':
-        this.loadConst(dest, e.value);
+        this.loadConst(dest, e.value, e.bytes);
         break;
       case 'name':
         this.loadName(dest, e.name);
@@ -703,10 +709,10 @@ class Compiler {
     }
   }
 
-  loadConst(dest, v) {
+  loadConst(dest, v, bytes) {
     if (v === null) this.emit(OpCode.LOADNIL, dest, dest, 0);
     else if (typeof v === 'boolean') this.emit(OpCode.LOADBOOL, dest, v ? 1 : 0, 0);
-    else this.emit(OpCode.LOADK, dest, this.kst(v), 0);
+    else this.emit(OpCode.LOADK, dest, this.kst(v, bytes), 0);
   }
 
   loadName(dest, name) {
@@ -795,6 +801,9 @@ class Compiler {
     if (e.table.type === 'name' && local < 0 && this.isStableRead(e.key) &&
         !(e.table.type === 'name' && this.findUpval(e.table.name) >= 0)) {
       this.emit(OpCode.GETGLOBAL, dest, this.kst(e.table.name), 0);
+      // Once the constant pool passes RKASK, even a literal key needs a
+      // scratch register. Do not let that load overwrite the table in dest.
+      this.fs.freereg = Math.max(this.fs.freereg, dest + 1);
       const k = this.exprRK(e.key);
       this.emit(OpCode.GETTABLE, dest, dest, k);
       this.freeTo(dest + 1);

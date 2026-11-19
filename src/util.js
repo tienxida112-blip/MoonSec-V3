@@ -120,35 +120,45 @@ class ByteReader {
   remaining() {
     return this.buf.length - this.pos;
   }
+  ensure(n) {
+    if (!Number.isInteger(n) || n < 0 || n > this.remaining()) throw new Error('truncated or invalid byte stream at ' + this.pos);
+  }
   u8() {
+    this.ensure(1);
     return this.buf[this.pos++];
   }
   i16() {
+    this.ensure(2);
     const v = this.buf.readInt16LE(this.pos);
     this.pos += 2;
     return v;
   }
   u16() {
+    this.ensure(2);
     const v = this.buf.readUInt16LE(this.pos);
     this.pos += 2;
     return v;
   }
   i32() {
+    this.ensure(4);
     const v = this.buf.readInt32LE(this.pos);
     this.pos += 4;
     return v;
   }
   u32() {
+    this.ensure(4);
     const v = this.buf.readUInt32LE(this.pos);
     this.pos += 4;
     return v;
   }
   f64() {
+    this.ensure(8);
     const v = this.buf.readDoubleLE(this.pos);
     this.pos += 8;
     return v;
   }
   bytes(n) {
+    this.ensure(n);
     const s = this.buf.subarray(this.pos, this.pos + n);
     this.pos += n;
     return s;

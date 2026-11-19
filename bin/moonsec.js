@@ -33,7 +33,7 @@ function main(argv) {
     watermark: !argv.includes('--no-watermark'),
   });
   fs.writeFileSync(out, res.output);
-  console.log(`obfuscated ${input} -> ${out}  (${res.output.length} bytes)`);
+  console.log(`obfuscated ${input} -> ${out}  (${Buffer.byteLength(res.output, 'utf8')} bytes)`);
 }
 
 main(process.argv.slice(2));
